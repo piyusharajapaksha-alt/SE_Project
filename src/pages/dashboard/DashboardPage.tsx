@@ -8,7 +8,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 const CHART_COLORS = ['#4f46e5', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
 
 export default function DashboardPage() {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -20,26 +20,10 @@ export default function DashboardPage() {
     setLoading(true);
     try {
       if (!user) return;
-      switch (user.role) {
-        case 'HR Manager':
-          setData(await dashboardService.getHRDashboard());
-          break;
-        case 'Department Manager':
-          const dept = profile?.department || 'Engineering';
-          setData(await dashboardService.getDeptManagerDashboard(dept));
-          break;
-        case 'Training Coordinator':
-          setData(await dashboardService.getTrainingCoordDashboard());
-          break;
-        case 'Event Organizer':
-          setData(await dashboardService.getEventOrganizerDashboard());
-          break;
-        case 'Grievance Officer':
-          setData(await dashboardService.getGrievanceOfficerDashboard());
-          break;
-        default:
-          setData(await dashboardService.getEmployeeDashboard(user.employeeId));
-      }
+      // MAIN / Dashboard is always the employee-level dashboard.
+      // A user may have a management role, but that role must not change
+      // the data shown on the common MAIN navigation.
+      setData(await dashboardService.getEmployeeDashboard(user.employeeId));
     } catch (err) {
       console.error('Dashboard error:', err);
     } finally {
@@ -50,12 +34,7 @@ export default function DashboardPage() {
   if (loading) return <LoadingState message="Loading dashboard..." />;
   if (!data) return <div>Unable to load dashboard data.</div>;
 
-  // Render different dashboards based on role
-  if (user?.role === 'HR Manager') return <HRDashboard data={data} />;
-  if (user?.role === 'Department Manager') return <DeptManagerDashboard data={data} />;
-  if (user?.role === 'Training Coordinator') return <TrainingCoordDashboard data={data} />;
-  if (user?.role === 'Event Organizer') return <EventOrganizerDashboard data={data} />;
-  if (user?.role === 'Grievance Officer') return <GrievanceOfficerDashboard data={data} />;
+  // MAIN / Dashboard is always the employee-level dashboard.
   return <EmployeeDashboard data={data} />;
 }
 

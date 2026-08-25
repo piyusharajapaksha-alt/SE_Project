@@ -12,10 +12,12 @@ import {
 } from '@/data/mock';
 
 // --- Helper: Simulate network delay ---
+/*
 function delay(ms = 300): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
-
+   await delay();
+*/
 // --- Helper: Deep clone to avoid mutation issues ---
 function clone<T>(data: T): T {
   return JSON.parse(JSON.stringify(data));
@@ -35,7 +37,7 @@ let _employees = clone(mockEmployees);
 
 export const employeeService = {
   async getAll(filters?: { search?: string; department?: string; status?: string; role?: string }) {
-    await delay();
+  
     let result = clone(_employees);
     if (filters?.search) {
       const s = filters.search.toLowerCase();
@@ -59,13 +61,13 @@ export const employeeService = {
   },
 
   async getById(id: string) {
-    await delay();
+    
     const emp = _employees.find((e: any) => e.id === id);
     return emp ? clone(emp) : null;
   },
 
   async create(data: any) {
-    await delay(500);
+   
     const id = `EMP${String(_employees.length + 1).padStart(3, '0')}`;
     const newEmp = { id, ...data, avatar: null };
     _employees.push(newEmp);
@@ -73,7 +75,7 @@ export const employeeService = {
   },
 
   async update(id: string, data: any) {
-    await delay(500);
+   
     const idx = _employees.findIndex((e: any) => e.id === id);
     if (idx === -1) throw new Error('Employee not found');
     _employees[idx] = { ..._employees[idx], ...data };
@@ -81,13 +83,13 @@ export const employeeService = {
   },
 
   async delete(id: string) {
-    await delay(500);
+   
     _employees = _employees.filter((e: any) => e.id !== id);
     return { success: true };
   },
 
   async getCountByDepartment() {
-    await delay();
+   
     const counts: Record<string, number> = {};
     _employees.forEach((e: any) => {
       counts[e.department] = (counts[e.department] || 0) + 1;
@@ -105,11 +107,11 @@ let _departments = clone(mockDepartments);
 
 export const departmentService = {
   async getAll() {
-    await delay();
+ 
     return clone(_departments);
   },
   async getById(id: string) {
-    await delay();
+   
     return clone(_departments.find((d: any) => d.id === id) || null);
   },
 };
@@ -127,7 +129,7 @@ let _attendance = clone(mockAttendance);
 
 export const attendanceService = {
   async getAll(filters?: { date?: string; employeeId?: string; department?: string; status?: string; search?: string }) {
-    await delay();
+   
     let result = clone(_attendance);
 
     if (filters?.date) {
@@ -159,12 +161,12 @@ export const attendanceService = {
   },
 
   async getByEmployee(employeeId: string) {
-    await delay();
+    
     return clone(_attendance.filter((a: any) => a.employeeId === employeeId).sort((a: any, b: any) => b.date.localeCompare(a.date)));
   },
 
   async update(id: string, data: any) {
-    await delay(500);
+    
     const idx = _attendance.findIndex((a: any) => a.id === id);
     if (idx === -1) throw new Error('Record not found');
     _attendance[idx] = { ..._attendance[idx], ...data };
@@ -172,13 +174,13 @@ export const attendanceService = {
   },
 
   async delete(id: string) {
-    await delay(500);
+   
     _attendance = _attendance.filter((a: any) => a.id !== id);
     return { success: true };
   },
 
   async getSummary(date?: string) {
-    await delay();
+    
     const targetDate = date || '2024-12-16';
     const dayRecords = _attendance.filter((a: any) => a.date === targetDate);
     return {
@@ -208,7 +210,7 @@ let _leaveBalances = clone(mockLeaveBalances);
 
 export const leaveService = {
   async getAll(filters?: { employeeId?: string; status?: string; search?: string; department?: string }) {
-    await delay();
+   
     let result = clone(_leaveRequests);
 
     if (filters?.employeeId) {
@@ -243,13 +245,13 @@ export const leaveService = {
   },
 
   async getById(id: string) {
-    await delay();
+   
     const req = _leaveRequests.find((l: any) => l.id === id);
     return req ? clone(req) : null;
   },
 
   async create(data: any) {
-    await delay(500);
+   
     const id = `LR${String(_leaveRequests.length + 1).padStart(3, '0')}`;
     const newReq = { id, ...data, status: 'Pending', approverId: null, approvedAt: null, comments: '' };
     _leaveRequests.push(newReq);
@@ -257,7 +259,7 @@ export const leaveService = {
   },
 
   async approve(id: string, comments: string) {
-    await delay(500);
+   
     const idx = _leaveRequests.findIndex((l: any) => l.id === id);
     if (idx === -1) throw new Error('Request not found');
     _leaveRequests[idx] = { ..._leaveRequests[idx], status: 'Approved', approvedAt: new Date().toISOString().split('T')[0], comments };
@@ -265,7 +267,7 @@ export const leaveService = {
   },
 
   async reject(id: string, comments: string) {
-    await delay(500);
+   
     const idx = _leaveRequests.findIndex((l: any) => l.id === id);
     if (idx === -1) throw new Error('Request not found');
     _leaveRequests[idx] = { ..._leaveRequests[idx], status: 'Rejected', approvedAt: new Date().toISOString().split('T')[0], comments };
@@ -273,7 +275,7 @@ export const leaveService = {
   },
 
   async cancel(id: string) {
-    await delay(500);
+   
     const idx = _leaveRequests.findIndex((l: any) => l.id === id);
     if (idx === -1) throw new Error('Request not found');
     _leaveRequests[idx] = { ..._leaveRequests[idx], status: 'Cancelled' };
@@ -281,7 +283,7 @@ export const leaveService = {
   },
 
   async getBalance(employeeId: string) {
-    await delay();
+   
     const balance = _leaveBalances.find((b: any) => b.employeeId === employeeId);
     return balance ? clone(balance) : {
       employeeId,
@@ -305,7 +307,7 @@ let _performance = clone(mockPerformance);
 
 export const performanceService = {
   async getAll(filters?: { employeeId?: string; status?: string; search?: string }) {
-    await delay();
+   
     let result = clone(_performance);
 
     if (filters?.employeeId) {
@@ -335,18 +337,18 @@ export const performanceService = {
   },
 
   async getById(id: string) {
-    await delay();
+   
     const perf = _performance.find((p: any) => p.id === id);
     return perf ? clone(perf) : null;
   },
 
   async getByEmployee(employeeId: string) {
-    await delay();
+    
     return clone(_performance.filter((p: any) => p.employeeId === employeeId));
   },
 
   async create(data: any) {
-    await delay(500);
+    
     const id = `PERF${String(_performance.length + 1).padStart(3, '0')}`;
     const newPerf = { id, ...data };
     _performance.push(newPerf);
@@ -354,7 +356,7 @@ export const performanceService = {
   },
 
   async update(id: string, data: any) {
-    await delay(500);
+    
     const idx = _performance.findIndex((p: any) => p.id === id);
     if (idx === -1) throw new Error('Performance review not found');
     _performance[idx] = { ..._performance[idx], ...data };
@@ -378,7 +380,7 @@ let _training = clone(mockTraining);
 
 export const trainingService = {
   async getAll(filters?: { search?: string; category?: string; status?: string }) {
-    await delay();
+   
     let result = clone(_training);
 
     if (filters?.search) {
@@ -402,7 +404,7 @@ export const trainingService = {
   },
 
   async getById(id: string) {
-    await delay();
+   
     const training = _training.find((t: any) => t.id === id);
     if (!training) return null;
     const result = clone(training);
@@ -418,7 +420,7 @@ export const trainingService = {
   },
 
   async create(data: any) {
-    await delay(500);
+   
     const id = `TRN${String(_training.length + 1).padStart(3, '0')}`;
     const newTraining = { id, ...data, participants: [], status: 'Upcoming' };
     _training.push(newTraining);
@@ -426,7 +428,7 @@ export const trainingService = {
   },
 
   async update(id: string, data: any) {
-    await delay(500);
+   
     const idx = _training.findIndex((t: any) => t.id === id);
     if (idx === -1) throw new Error('Training not found');
     _training[idx] = { ..._training[idx], ...data };
@@ -434,13 +436,13 @@ export const trainingService = {
   },
 
   async delete(id: string) {
-    await delay(500);
+    
     _training = _training.filter((t: any) => t.id !== id);
     return { success: true };
   },
 
   async register(trainingId: string, employeeId: string) {
-    await delay(500);
+   
     const idx = _training.findIndex((t: any) => t.id === trainingId);
     if (idx === -1) throw new Error('Training not found');
     if (_training[idx].participants.includes(employeeId)) throw new Error('Already registered');
@@ -450,7 +452,7 @@ export const trainingService = {
   },
 
   async unregister(trainingId: string, employeeId: string) {
-    await delay(500);
+    
     const idx = _training.findIndex((t: any) => t.id === trainingId);
     if (idx === -1) throw new Error('Training not found');
     _training[idx].participants = _training[idx].participants.filter((p: string) => p !== employeeId);
@@ -475,7 +477,7 @@ let _events = clone(mockEvents);
 
 export const eventService = {
   async getAll(filters?: { search?: string; category?: string; status?: string }) {
-    await delay();
+   
     let result = clone(_events);
 
     if (filters?.search) {
@@ -499,7 +501,7 @@ export const eventService = {
   },
 
   async getById(id: string) {
-    await delay();
+   
     const event = _events.find((e: any) => e.id === id);
     if (!event) return null;
     const result = clone(event);
@@ -515,7 +517,7 @@ export const eventService = {
   },
 
   async create(data: any) {
-    await delay(500);
+   
     const id = `EVT${String(_events.length + 1).padStart(3, '0')}`;
     const newEvent = { id, ...data, registeredIds: [], status: 'Upcoming' };
     _events.push(newEvent);
@@ -523,7 +525,7 @@ export const eventService = {
   },
 
   async update(id: string, data: any) {
-    await delay(500);
+    
     const idx = _events.findIndex((e: any) => e.id === id);
     if (idx === -1) throw new Error('Event not found');
     _events[idx] = { ..._events[idx], ...data };
@@ -531,14 +533,14 @@ export const eventService = {
   },
 
   async delete(id: string) {
-    await delay(500);
+   
     _events = _events.filter((e: any) => e.id !== id);
     return { success: true };
   },
 
   // Register for an event - updates capacity logic through state
   async register(eventId: string, employeeId: string) {
-    await delay(500);
+    
     const idx = _events.findIndex((e: any) => e.id === eventId);
     if (idx === -1) throw new Error('Event not found');
     if (_events[idx].registeredIds.includes(employeeId)) throw new Error('Already registered');
@@ -549,7 +551,7 @@ export const eventService = {
 
   // Cancel event registration - updates capacity logic through state
   async unregister(eventId: string, employeeId: string) {
-    await delay(500);
+    
     const idx = _events.findIndex((e: any) => e.id === eventId);
     if (idx === -1) throw new Error('Event not found');
     _events[idx].registeredIds = _events[idx].registeredIds.filter((id: string) => id !== employeeId);
@@ -557,7 +559,7 @@ export const eventService = {
   },
 
   async getRegistrations(eventId: string) {
-    await delay();
+   
     const event = _events.find((e: any) => e.id === eventId);
     if (!event) return [];
     return event.registeredIds.map((eId: string) => {
@@ -581,7 +583,7 @@ let _grievances = clone(mockGrievances);
 
 export const grievanceService = {
   async getAll(filters?: { employeeId?: string; status?: string; priority?: string; category?: string; search?: string }) {
-    await delay();
+   
     let result = clone(_grievances);
 
     if (filters?.employeeId) {
@@ -614,7 +616,7 @@ export const grievanceService = {
   },
 
   async getById(id: string) {
-    await delay();
+   
     const grv = _grievances.find((g: any) => g.id === id);
     if (!grv) return null;
     const emp = _employees.find((e: any) => e.id === grv.employeeId);
@@ -628,7 +630,7 @@ export const grievanceService = {
   },
 
   async create(data: any) {
-    await delay(500);
+   
     const id = `GRV${String(_grievances.length + 1).padStart(3, '0')}`;
     const now = new Date().toISOString().split('T')[0];
     const newGrv = { id, ...data, status: 'New', assignedTo: null, responses: [], createdAt: now, updatedAt: now };
@@ -637,7 +639,7 @@ export const grievanceService = {
   },
 
   async updateStatus(id: string, status: string, assignedTo?: string) {
-    await delay(500);
+    
     const idx = _grievances.findIndex((g: any) => g.id === id);
     if (idx === -1) throw new Error('Grievance not found');
     _grievances[idx] = {
@@ -650,7 +652,7 @@ export const grievanceService = {
   },
 
   async addResponse(id: string, responderId: string, text: string) {
-    await delay(500);
+    
     const idx = _grievances.findIndex((g: any) => g.id === id);
     if (idx === -1) throw new Error('Grievance not found');
     (_grievances[idx].responses as any[]).push({
@@ -676,7 +678,7 @@ let _notifications = clone(mockNotifications);
 
 export const notificationService = {
   async getAll(userId: string, filters?: { type?: string; read?: boolean }) {
-    await delay();
+   
     let result = clone(_notifications.filter((n: any) => n.userId === userId));
 
     if (filters?.type && filters.type !== 'All') {
@@ -690,19 +692,19 @@ export const notificationService = {
   },
 
   async getUnreadCount(userId: string) {
-    await delay(100);
+    
     return _notifications.filter((n: any) => n.userId === userId && !n.read).length;
   },
 
   async markAsRead(id: string) {
-    await delay(200);
+    
     const idx = _notifications.findIndex((n: any) => n.id === id);
     if (idx !== -1) _notifications[idx].read = true;
     return { success: true };
   },
 
   async markAllAsRead(userId: string) {
-    await delay(300);
+   
     _notifications.forEach((n: any) => {
       if (n.userId === userId) n.read = true;
     });
@@ -710,7 +712,7 @@ export const notificationService = {
   },
 
   async addNotification(data: any) {
-    await delay(200);
+    
     const id = `NTF${String(_notifications.length + 1).padStart(3, '0')}`;
     const newNotif = { id, ...data, read: false, createdAt: new Date().toISOString() };
     _notifications.push(newNotif);
@@ -725,12 +727,12 @@ export const notificationService = {
 
 export const dashboardService = {
   async getStats() {
-    await delay();
+   
     return clone(mockDashboardStats);
   },
 
   async getHRDashboard() {
-    await delay();
+   
     const today = '2024-12-16';
     const dayAttendance = _attendance.filter((a: any) => a.date === today);
     const pendingLeaves = _leaveRequests.filter((l: any) => l.status === 'Pending').length;
@@ -776,7 +778,7 @@ export const dashboardService = {
   },
 
   async getEmployeeDashboard(employeeId: string) {
-    await delay();
+   
     const empAttendance = _attendance.filter((a: any) => a.employeeId === employeeId);
     const empLeave = _leaveRequests.filter((l: any) => l.employeeId === employeeId);
     const empTraining = _training.filter((t: any) => t.participants.includes(employeeId));
@@ -806,7 +808,7 @@ export const dashboardService = {
   },
 
   async getDeptManagerDashboard(department: string) {
-    await delay();
+   
     const deptEmps = _employees.filter((e: any) => e.department === department);
     const deptEmpIds = deptEmps.map((e: any) => e.id);
     const todayAtt = _attendance.filter((a: any) => a.date === '2024-12-16' && deptEmpIds.includes(a.employeeId));
@@ -829,7 +831,7 @@ export const dashboardService = {
   },
 
   async getTrainingCoordDashboard() {
-    await delay();
+    
     return {
       activeTraining: _training.filter((t: any) => t.status === 'Upcoming').length,
       completedTraining: _training.filter((t: any) => t.status === 'Completed').length,
@@ -844,7 +846,7 @@ export const dashboardService = {
   },
 
   async getEventOrganizerDashboard() {
-    await delay();
+    
     return {
       totalEvents: _events.length,
       upcomingEvents: _events.filter((e: any) => e.status === 'Upcoming').length,
@@ -860,7 +862,7 @@ export const dashboardService = {
   },
 
   async getGrievanceOfficerDashboard() {
-    await delay();
+   
     return {
       newGrievances: _grievances.filter((g: any) => g.status === 'New').length,
       underReview: _grievances.filter((g: any) => g.status === 'Under Review').length,

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { trainingService } from '@/services/dataServices';
@@ -9,7 +10,9 @@ import { GraduationCap, Plus, Users, MapPin, Calendar, Pencil, Trash2, UserPlus,
 export default function TrainingPage() {
   const { user, checkPermission } = useAuth();
   const { addToast } = useToast();
-  const canManage = checkPermission('training.manage');
+  const location = useLocation();
+  const isManagementView = location.pathname.startsWith('/management/');
+  const canManage = isManagementView && checkPermission('training.manage');
   const [programs, setPrograms] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -26,7 +29,7 @@ export default function TrainingPage() {
   const [form, setForm] = useState({ title: '', description: '', trainer: '', category: 'Technical', startDate: '', endDate: '', location: '', capacity: '20' });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  useEffect(() => { loadData(); }, [search, categoryFilter, statusFilter]);
+  useEffect(() => { loadData(); }, [search, categoryFilter, statusFilter, isManagementView]);
 
   const loadData = async () => {
     setLoading(true);

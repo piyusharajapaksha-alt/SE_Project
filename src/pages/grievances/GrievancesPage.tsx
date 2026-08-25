@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { grievanceService } from '@/services/dataServices';
@@ -9,7 +10,10 @@ import { MessageSquareWarning, Plus, Eye, Loader2, Send, AlertTriangle, CheckCir
 export default function GrievancesPage() {
   const { user, checkPermission } = useAuth();
   const { addToast } = useToast();
-  const canManage = checkPermission('grievances.manage');
+  const location = useLocation();
+  const isManagementView = location.pathname.startsWith('/management/');
+  const isEmployeeView = !isManagementView;
+  const canManage = isManagementView && checkPermission('grievances.manage');
   const [grievances, setGrievances] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -28,13 +32,13 @@ export default function GrievancesPage() {
   const [form, setForm] = useState({ category: '', priority: 'Medium', description: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  useEffect(() => { loadData(); }, [search, statusFilter, priorityFilter, categoryFilter, user]);
+  useEffect(() => { loadData(); }, [search, statusFilter, priorityFilter, categoryFilter, user, isManagementView]);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const filters: any = {};
-      if (!canManage && user) filters.employeeId = user.employeeId;
+      if (isEmployeeView && user) filters.employeeId = user.employeeId;
       if (search) filters.search = search;
       if (statusFilter !== 'All') filters.status = statusFilter;
       if (priorityFilter !== 'All') filters.priority = priorityFilter;

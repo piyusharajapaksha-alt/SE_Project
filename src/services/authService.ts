@@ -29,15 +29,19 @@ export interface CurrentUser extends AuthUser {
 }
 
 // Simulate network delay for realistic UX
+/*
 function delay(ms: number = 500): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+  example for how to use this funtion -  await delay(800);
+*/
+  
 
 // DEVELOPMENT ONLY: Mock login
 // FUTURE BACKEND: POST /api/auth/login with { email, password }
 // The backend should return a JWT token and user info
 export async function login(email: string, password: string): Promise<{ user: AuthUser; token: string }> {
-  await delay(800);
+  
 
   const mockUser = mockUsers.find((u) => u.email === email && u.password === password);
   if (!mockUser) {
@@ -62,7 +66,7 @@ export async function login(email: string, password: string): Promise<{ user: Au
 // Get full current user profile
 // FUTURE BACKEND: GET /api/auth/me (with Authorization header)
 export async function getCurrentUser(employeeId: string): Promise<CurrentUser> {
-  await delay(300);
+  
 
   const employee = mockEmployees.find((e) => e.id === employeeId);
   if (!employee) {
@@ -87,7 +91,7 @@ export async function getCurrentUser(employeeId: string): Promise<CurrentUser> {
 // Logout
 // FUTURE BACKEND: POST /api/auth/logout (invalidate token)
 export async function logout(): Promise<void> {
-  await delay(200);
+ 
   // Clear development session from localStorage
   localStorage.removeItem('staffhub_auth');
   localStorage.removeItem('staffhub_token');
@@ -96,7 +100,7 @@ export async function logout(): Promise<void> {
 // Forgot password
 // FUTURE BACKEND: POST /api/auth/forgot-password with { email }
 export async function forgotPassword(email: string): Promise<{ success: boolean; message: string }> {
-  await delay(1000);
+  
   const user = mockUsers.find((u) => u.email === email);
   if (!user) {
     // Don't reveal whether email exists for security
@@ -108,7 +112,7 @@ export async function forgotPassword(email: string): Promise<{ success: boolean;
 // Reset password
 // FUTURE BACKEND: POST /api/auth/reset-password with { token, newPassword }
 export async function resetPassword(_token: string, _newPassword: string): Promise<{ success: boolean }> {
-  await delay(1000);
+ 
   // DEVELOPMENT: Always succeeds
   return { success: true };
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { performanceService } from '@/services/dataServices';
 import { PageHeader, SearchInput, SelectFilter, Badge, LoadingState, EmptyState, StatCard } from '@/components/ui';
@@ -9,20 +10,22 @@ const CHART_COLORS = ['#4f46e5', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
 
 export default function PerformancePage() {
   const { user } = useAuth();
-  const isEmployee = user?.role === 'Employee';
+  const location = useLocation();
+  const isManagementView = location.pathname.startsWith('/management/');
+  const isEmployeeView = !isManagementView;
   const [reviews, setReviews] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedReview, setSelectedReview] = useState<any>(null);
 
-  useEffect(() => { loadData(); }, [search, statusFilter, user]);
+  useEffect(() => { loadData(); }, [search, statusFilter, user, isManagementView]);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const filters: any = {};
-      if (isEmployee && user) filters.employeeId = user.employeeId;
+      if (isEmployeeView && user) filters.employeeId = user.employeeId;
       else if (search) filters.search = search;
       if (statusFilter !== 'All') filters.status = statusFilter;
       const data = await performanceService.getAll(filters);
@@ -34,7 +37,7 @@ export default function PerformancePage() {
 
   return (
     <div>
-      <PageHeader title={isEmployee ? 'My Performance' : 'Performance Management'} description={isEmployee ? 'View your performance reviews' : 'Track and manage employee performance'} />
+      <PageHeader title={isEmployeeView ? 'My Performance' : 'Performance Management'} description={isEmployeeView ? 'View your performance reviews' : 'Track and manage employee performance'} />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <StatCard title="Total Reviews" value={reviews.length} icon={<BarChart3 className="h-5 w-5" />} color="indigo" />
@@ -44,7 +47,7 @@ export default function PerformancePage() {
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
-        {!isEmployee && <div className="flex-1"><SearchInput value={search} onChange={setSearch} placeholder="Search employees..." /></div>}
+        {!isEmployeeView && <div className="flex-1"><SearchInput value={search} onChange={setSearch} placeholder="Search employees..." /></div>}
         <SelectFilter value={statusFilter} onChange={setStatusFilter} options={['Completed', 'Pending Review']} />
       </div>
 

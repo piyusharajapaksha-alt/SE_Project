@@ -1,7 +1,13 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+} from 'react-router-dom';
+
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ToastProvider } from '@/contexts/ToastContext';
-import { ProtectedRoute } from '@/routes/ProtectedRoute';
+import { ProtectedRoute, PermissionRoute } from '@/routes/ProtectedRoute';
 
 // Layouts
 import AuthLayout from '@/layouts/AuthLayout';
@@ -14,8 +20,12 @@ import ForgotPasswordPage from '@/pages/auth/ForgotPasswordPage';
 // Dashboard
 import DashboardPage from '@/pages/dashboard/DashboardPage';
 
-// Employee Pages
-import { EmployeeListPage, EmployeeDetailPage, EmployeeFormPage } from '@/pages/employees/EmployeePages';
+// Employees
+import {
+  EmployeeListPage,
+  EmployeeDetailPage,
+  EmployeeFormPage,
+} from '@/pages/employees/EmployeePages';
 
 // Attendance
 import AttendancePage from '@/pages/attendance/AttendancePage';
@@ -47,83 +57,315 @@ import ProfilePage from '@/pages/profile/ProfilePage';
 // Settings
 import SettingsPage from '@/pages/settings/SettingsPage';
 
-// 404 Page
+
+// ============================================================
+// 404
+// ============================================================
+
 function NotFoundPage() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-50">
+
       <div className="text-center">
-        <h1 className="text-6xl font-bold text-gray-300 mb-4">404</h1>
-        <h2 className="text-xl font-semibold text-gray-900 mb-2">Page not found</h2>
-        <p className="text-sm text-gray-500 mb-6">The page you're looking for doesn't exist.</p>
-        <a href="/dashboard" className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700">
+
+        <h1 className="text-6xl font-bold text-gray-300 mb-4">
+          404
+        </h1>
+
+        <h2 className="text-xl font-semibold text-gray-900 mb-2">
+          Page not found
+        </h2>
+
+        <p className="text-sm text-gray-500 mb-6">
+          The page you're looking for doesn't exist.
+        </p>
+
+        <a
+          href="/dashboard"
+          className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700"
+        >
           Go to Dashboard
         </a>
+
       </div>
+
     </div>
   );
 }
 
+
+// ============================================================
+// APPLICATION
+// ============================================================
+
 export default function App() {
+
   return (
     <BrowserRouter>
+
       <AuthProvider>
+
         <ToastProvider>
+
           <Routes>
-            {/* Auth Routes (public) */}
+
+
+            {/* ==================================================
+                PUBLIC AUTH ROUTES
+                ================================================== */}
+
             <Route element={<AuthLayout />}>
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+
+              <Route
+                path="/login"
+                element={<LoginPage />}
+              />
+
+              <Route
+                path="/forgot-password"
+                element={<ForgotPasswordPage />}
+              />
+
             </Route>
 
-            {/* Protected Routes (authenticated) */}
-            <Route element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
-              <Route path="/dashboard" element={<DashboardPage />} />
-              
-              {/* Employees */}
-              <Route path="/employees" element={<EmployeeListPage />} />
-              <Route path="/employees/create" element={<EmployeeFormPage />} />
-              <Route path="/employees/:id" element={<EmployeeDetailPage />} />
-              <Route path="/employees/:id/edit" element={<EmployeeFormPage />} />
 
-              {/* Attendance */}
-              <Route path="/attendance" element={<AttendancePage />} />
+            {/* ==================================================
+                PROTECTED APPLICATION
+                ================================================== */}
 
-              {/* Leave */}
-              <Route path="/leave" element={<LeavePage />} />
+            <Route
+              element={
+                <ProtectedRoute>
+                  <DashboardLayout />
+                </ProtectedRoute>
+              }
+            >
 
-              {/* Performance */}
-              <Route path="/performance" element={<PerformancePage />} />
 
-              {/* Training */}
-              <Route path="/training" element={<TrainingPage />} />
+              {/* ==================================================
+                  MAIN - EVERY EMPLOYEE
+                  ================================================== */}
 
-              {/* Events */}
-              <Route path="/events" element={<EventsPage />} />
+              <Route
+                path="/dashboard"
+                element={<DashboardPage />}
+              />
 
-              {/* Grievances */}
-              <Route path="/grievances" element={<GrievancesPage />} />
+              <Route
+                path="/attendance"
+                element={<AttendancePage />}
+              />
 
-              {/* Notifications */}
-              <Route path="/notifications" element={<NotificationsPage />} />
+              <Route
+                path="/leave"
+                element={<LeavePage />}
+              />
+
+              <Route
+                path="/performance"
+                element={<PerformancePage />}
+              />
+
+              <Route
+                path="/training"
+                element={<TrainingPage />}
+              />
+
+              <Route
+                path="/events"
+                element={<EventsPage />}
+              />
+
+              <Route
+                path="/grievances"
+                element={<GrievancesPage />}
+              />
+
+
+              {/* ==================================================
+                  PERSONAL - EVERY EMPLOYEE
+                  ================================================== */}
+
+              <Route
+                path="/notifications"
+                element={<NotificationsPage />}
+              />
+
+              <Route
+                path="/profile"
+                element={<ProfilePage />}
+              />
+
+              <Route
+                path="/settings"
+                element={<SettingsPage />}
+              />
+
+
+              {/* ==================================================
+                  MANAGEMENT
+                  
+                  IMPORTANT:
+                  These are separate URLs from employee pages.
+                  ================================================== */}
+
+
+              {/* Employee Management */}
+
+              <Route
+                path="/management/employees"
+                element={
+                  <PermissionRoute permission="employees.view">
+                    <EmployeeListPage />
+                  </PermissionRoute>
+                }
+              />
+
+              <Route
+                path="/management/employees/create"
+                element={
+                  <PermissionRoute permission="employees.create">
+                    <EmployeeFormPage />
+                  </PermissionRoute>
+                }
+              />
+
+              <Route
+                path="/management/employees/:id"
+                element={
+                  <PermissionRoute permission="employees.view">
+                    <EmployeeDetailPage />
+                  </PermissionRoute>
+                }
+              />
+
+              <Route
+                path="/management/employees/:id/edit"
+                element={
+                  <PermissionRoute permission="employees.edit">
+                    <EmployeeFormPage />
+                  </PermissionRoute>
+                }
+              />
+
+
+              {/* Attendance Management */}
+
+              <Route
+                path="/management/attendance"
+                element={
+                  <PermissionRoute permission="attendance.view-all">
+                    <AttendancePage />
+                  </PermissionRoute>
+                }
+              />
+
+
+              {/* Leave Management */}
+
+              <Route
+                path="/management/leave"
+                element={
+                  <PermissionRoute permission="leave.view-all">
+                    <LeavePage />
+                  </PermissionRoute>
+                }
+              />
+
+
+              {/* Performance Management */}
+
+              <Route
+                path="/management/performance"
+                element={
+                  <PermissionRoute permission="performance.view-all">
+                    <PerformancePage />
+                  </PermissionRoute>
+                }
+              />
+
+
+              {/* Training Management */}
+
+              <Route
+                path="/management/training"
+                element={
+                  <PermissionRoute permission="training.manage">
+                    <TrainingPage />
+                  </PermissionRoute>
+                }
+              />
+
+
+              {/* Event Management */}
+
+              <Route
+                path="/management/events"
+                element={
+                  <PermissionRoute permission="events.manage">
+                    <EventsPage />
+                  </PermissionRoute>
+                }
+              />
+
+
+              {/* Grievance Management */}
+
+              <Route
+                path="/management/grievances"
+                element={
+                  <PermissionRoute permission="grievances.manage">
+                    <GrievancesPage />
+                  </PermissionRoute>
+                }
+              />
+
 
               {/* Reports */}
-              <Route path="/reports" element={<ReportsPage />} />
 
-              {/* Profile */}
-              <Route path="/profile" element={<ProfilePage />} />
+              <Route
+                path="/management/reports"
+                element={
+                  <PermissionRoute permission="reports.view">
+                    <ReportsPage />
+                  </PermissionRoute>
+                }
+              />
 
-              {/* Settings */}
-              <Route path="/settings" element={<SettingsPage />} />
             </Route>
 
-            {/* Default redirect */}
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-            {/* 404 */}
-            <Route path="*" element={<NotFoundPage />} />
+            {/* ==================================================
+                DEFAULT
+                ================================================== */}
+
+            <Route
+              path="/"
+              element={
+                <Navigate
+                  to="/dashboard"
+                  replace
+                />
+              }
+            />
+
+
+            {/* ==================================================
+                404
+                ================================================== */}
+
+            <Route
+              path="*"
+              element={<NotFoundPage />}
+            />
+
           </Routes>
+
         </ToastProvider>
+
       </AuthProvider>
+
     </BrowserRouter>
   );
 }
+

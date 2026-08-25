@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { eventService } from '@/services/dataServices';
@@ -9,7 +10,9 @@ import { Calendar, Plus, Users, MapPin, Clock, UserPlus, UserMinus, Trash2, Eye,
 export default function EventsPage() {
   const { user, checkPermission } = useAuth();
   const { addToast } = useToast();
-  const canManage = checkPermission('events.manage');
+  const location = useLocation();
+  const isManagementView = location.pathname.startsWith('/management/');
+  const canManage = isManagementView && checkPermission('events.manage');
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -26,7 +29,7 @@ export default function EventsPage() {
   const [form, setForm] = useState({ title: '', description: '', organizer: '', category: 'Team Building', date: '', time: '', endTime: '', location: '', capacity: '50' });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  useEffect(() => { loadData(); }, [search, categoryFilter, statusFilter]);
+  useEffect(() => { loadData(); }, [search, categoryFilter, statusFilter, isManagementView]);
 
   const loadData = async () => {
     setLoading(true);

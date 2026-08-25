@@ -1,270 +1,842 @@
-// ============================================================
-// DASHBOARD LAYOUT - Main authenticated layout with sidebar, header
-// ============================================================
-
-import { useState, useEffect } from 'react';
-import { Outlet, useLocation, useNavigate, NavLink } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { useToast } from '@/contexts/ToastContext';
-import { notificationService } from '@/services/dataServices';
-import { getNavigationForRole, type RoleType } from '@/config';
+import React, { useMemo, useState } from 'react';
 import {
-  LayoutDashboard, Users, Clock, CalendarDays, TrendingUp, GraduationCap, Calendar,
-  MessageSquareWarning, BarChart3, Bell, User, Settings, ChevronLeft, ChevronRight,
-  LogOut, Search, Menu, X, Moon, Sun
+  NavLink,
+  Outlet,
+  useLocation,
+  useNavigate,
+} from 'react-router-dom';
+
+import { useAuth } from '@/contexts/AuthContext';
+
+import {
+  getNavigationForRole,
+  getManagementLabel,
+  type RoleType,
+} from '@/config';
+
+import {
+  LayoutDashboard,
+  Users,
+  Clock,
+  CalendarDays,
+  TrendingUp,
+  GraduationCap,
+  Calendar,
+  MessageSquareWarning,
+  Bell,
+  BarChart3,
+  Settings,
+  LogOut,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  Menu,
+  X,
+  ChevronDown,
+  User,
+  Building2,
 } from 'lucide-react';
 
-const iconMap: Record<string, any> = {
-  LayoutDashboard, Users, Clock, CalendarDays, TrendingUp, GraduationCap, Calendar,
-  MessageSquareWarning, BarChart3, Bell, User, Settings,
+
+// ============================================================
+// ICON MAP
+// ============================================================
+
+const iconMap: Record<string, React.ElementType> = {
+  LayoutDashboard,
+  Users,
+  Clock,
+  CalendarDays,
+  TrendingUp,
+  GraduationCap,
+  Calendar,
+  MessageSquareWarning,
+  Bell,
+  BarChart3,
+  Settings,
+  User,
 };
 
+
+// ============================================================
+// DASHBOARD LAYOUT
+// ============================================================
+
 export default function DashboardLayout() {
-  const { user, profile, logout } = useAuth();
-  const { addToast } = useToast();
+
   const location = useLocation();
   const navigate = useNavigate();
+
+  const {
+    user,
+    profile,
+    logout,
+    checkPermission,
+  } = useAuth();
+
+
+  // ==========================================================
+  // STATE
+  // ==========================================================
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [showSearch, setShowSearch] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [darkMode, setDarkMode] = useState(false);
 
-  const navItems = user ? getNavigationForRole(user.role as RoleType) : [];
 
-  // Fetch unread notification count
-  useEffect(() => {
-    if (user) {
-      notificationService.getUnreadCount(user.employeeId).then(setUnreadCount);
-      const interval = setInterval(() => {
-        notificationService.getUnreadCount(user.employeeId).then(setUnreadCount);
-      }, 30000);
-      return () => clearInterval(interval);
-    }
-  }, [user]);
+  // ==========================================================
+  // ROLE NAVIGATION
+  // ==========================================================
 
-  // Global search
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
+  const allNavItems = user
+    ? getNavigationForRole(user.role as RoleType)
+    : [];
+
+
+  // ==========================================================
+  // MAIN
+  //
+  // ALWAYS AVAILABLE TO ALL EMPLOYEES.
+  // ==========================================================
+
+  const mainItems = allNavItems.filter(
+    (item) => item.group === 'main'
+  );
+
+
+  // ==========================================================
+  // MANAGEMENT
+  //
+  // ONLY ITEMS ALLOWED BY ROLE/PERMISSION.
+  // ==========================================================
+
+  const managementItems = allNavItems.filter(
+    (item) => item.group === 'management'
+  );
+
+
+  // ==========================================================
+  // PERSONAL
+  //
+  // ALWAYS AVAILABLE TO ALL EMPLOYEES.
+  // ==========================================================
+
+  const personalItems = allNavItems.filter(
+    (item) => item.group === 'personal'
+  );
+
+
+  // ==========================================================
+  // MANAGEMENT TITLE
+  // ==========================================================
+
+  const managementLabel = user
+    ? getManagementLabel(user.role as RoleType)
+    : null;
+
+
+  // ==========================================================
+  // PAGE TITLE
+  // ==========================================================
+
+  const pageTitle = useMemo(() => {
+
+    const allItems = [
+      ...mainItems,
+      ...managementItems,
+      ...personalItems,
+    ];
+
+    const currentItem = allItems.find(
+      (item) =>
+        location.pathname === item.path ||
+        location.pathname.startsWith(item.path + '/')
+    );
+
+    return currentItem?.label || 'Dashboard';
+
+  }, [
+    location.pathname,
+    mainItems,
+    managementItems,
+    personalItems,
+  ]);
+
+
+  // ==========================================================
+  // SEARCH
+  // ==========================================================
+
+  const searchResults = useMemo(() => {
+
+    const query = searchQuery.trim().toLowerCase();
+
+    if (!query) {
+      return [];
     }
-    const q = searchQuery.toLowerCase();
-    const results: any[] = [];
-    // Search employees
-    if (user?.role !== 'Employee') {
-      results.push({ type: 'page', label: 'Employees', path: '/employees' });
-    }
-    results.push({ type: 'page', label: 'Attendance', path: '/attendance' });
-    results.push({ type: 'page', label: 'Leave', path: '/leave' });
-    results.push({ type: 'page', label: 'Training', path: '/training' });
-    results.push({ type: 'page', label: 'Events', path: '/events' });
-    results.push({ type: 'page', label: 'Grievances', path: '/grievances' });
-    setSearchResults(results.filter(r => r.label.toLowerCase().includes(q)));
-  }, [searchQuery, user]);
+
+    const allItems = [
+      ...mainItems,
+      ...managementItems,
+      ...personalItems,
+    ];
+
+    return allItems
+      .filter((item) =>
+        item.label.toLowerCase().includes(query)
+      )
+      .map((item) => ({
+        type: 'page' as const,
+        label: item.label,
+        path: item.path,
+      }));
+
+  }, [
+    searchQuery,
+    mainItems,
+    managementItems,
+    personalItems,
+  ]);
+
+
+  // ==========================================================
+  // LOGOUT
+  // ==========================================================
 
   const handleLogout = async () => {
+
+    setProfileMenuOpen(false);
+
     try {
+
       await logout();
-      navigate('/login');
-      addToast('info', 'You have been logged out');
-    } catch {
-      addToast('error', 'Failed to logout');
+
+      navigate('/login', {
+        replace: true,
+      });
+
+    } catch (error) {
+
+      console.error('Logout failed:', error);
+
     }
   };
 
-  const initials = profile ? `${profile.firstName[0]}${profile.lastName[0]}` : '??';
 
-  const SidebarContent = () => (
-    <div className="flex flex-col h-full">
-      {/* Logo */}
-      <div className="flex items-center gap-3 px-4 h-16 border-b border-gray-200">
-        <div className="flex-shrink-0 w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-          <span className="text-white font-bold text-sm">SH</span>
-        </div>
-        {!sidebarCollapsed && (
-          <div className="overflow-hidden">
-            <h1 className="text-lg font-bold text-gray-900">StaffHub</h1>
-            <p className="text-[10px] text-gray-500 -mt-1">Management System</p>
-          </div>
-        )}
-      </div>
+  // ==========================================================
+  // NAVIGATION ITEM
+  // ==========================================================
 
-      {/* Navigation */}
-      <nav className="flex-1 py-4 overflow-y-auto">
-        <ul className="space-y-1 px-3">
-          {navItems.map((item) => {
-            const Icon = iconMap[item.icon] || LayoutDashboard;
-            const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
-            return (
-              <li key={item.key}>
-                <NavLink
-                  to={item.path}
-                  onClick={() => setMobileSidebarOpen(false)}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                    isActive
-                      ? 'bg-indigo-50 text-indigo-700'
-                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                  } ${sidebarCollapsed ? 'justify-center' : ''}`}
-                  title={sidebarCollapsed ? item.label : undefined}
-                >
-                  <Icon className="h-5 w-5 flex-shrink-0" />
-                  {!sidebarCollapsed && <span>{item.label}</span>}
-                </NavLink>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
+  const renderNavItem = (item: {
+    key: string;
+    label: string;
+    icon: string;
+    path: string;
+  }) => {
 
-      {/* User section */}
-      <div className="border-t border-gray-200 p-3">
-        {!sidebarCollapsed && profile && (
-          <div className="mb-3 px-3">
-            <p className="text-xs text-gray-500 truncate">{profile.role}</p>
-          </div>
-        )}
-        <button
-          onClick={handleLogout}
-          className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-red-50 hover:text-red-600 transition-all w-full ${sidebarCollapsed ? 'justify-center' : ''}`}
-          title={sidebarCollapsed ? 'Logout' : undefined}
+    const Icon =
+      iconMap[item.icon] || LayoutDashboard;
+
+    const isActive =
+      location.pathname === item.path ||
+      location.pathname.startsWith(item.path + '/');
+
+    return (
+      <li key={item.key}>
+
+        <NavLink
+          to={item.path}
+          onClick={() => {
+            setMobileSidebarOpen(false);
+            setSearchOpen(false);
+          }}
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+            isActive
+              ? 'bg-indigo-50 text-indigo-700'
+              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+          } ${
+            sidebarCollapsed
+              ? 'justify-center'
+              : ''
+          }`}
+          title={
+            sidebarCollapsed
+              ? item.label
+              : undefined
+          }
         >
-          <LogOut className="h-5 w-5 flex-shrink-0" />
-          {!sidebarCollapsed && <span>Logout</span>}
-        </button>
-      </div>
-    </div>
-  );
+
+          <Icon className="h-5 w-5 flex-shrink-0" />
+
+          {!sidebarCollapsed && (
+            <span className="truncate">
+              {item.label}
+            </span>
+          )}
+
+        </NavLink>
+
+      </li>
+    );
+  };
+
+
+  // ==========================================================
+  // USER DISPLAY
+  // ==========================================================
+
+  const displayName = profile
+    ? `${profile.firstName} ${profile.lastName}`
+    : user?.email || 'User';
+
+  const displayEmail =
+    user?.email || '';
+
+  const displayRole =
+    user?.role || 'Employee';
+
+  const initials = profile
+    ? `${profile.firstName?.[0] || ''}${profile.lastName?.[0] || ''}`.toUpperCase()
+    : 'U';
+
+
+  // ==========================================================
+  // RENDER
+  // ==========================================================
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      {/* Desktop sidebar */}
-      <aside className={`hidden lg:flex flex-col border-r border-gray-200 bg-white transition-all duration-200 ${sidebarCollapsed ? 'w-16' : 'w-60'}`}>
-        <SidebarContent />
-        {/* Collapse toggle */}
-        <button
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className="absolute top-20 -right-3 z-10 w-6 h-6 bg-white border border-gray-200 rounded-full flex items-center justify-center shadow-sm hover:bg-gray-50 hidden lg:flex"
-        >
-          {sidebarCollapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronLeft className="h-3 w-3" />}
-        </button>
-      </aside>
+    <div className="min-h-screen bg-gray-50">
 
-      {/* Mobile sidebar overlay */}
+
+      {/* ======================================================
+          MOBILE OVERLAY
+          ====================================================== */}
+
       {mobileSidebarOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setMobileSidebarOpen(false)} />
-          <aside className="absolute left-0 top-0 bottom-0 w-60 bg-white shadow-xl">
-            <SidebarContent />
-          </aside>
-        </div>
+        <div
+          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
+          onClick={() =>
+            setMobileSidebarOpen(false)
+          }
+        />
       )}
 
-      {/* Main content area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-6">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setMobileSidebarOpen(true)} className="lg:hidden p-2 text-gray-500 hover:text-gray-700">
-              <Menu className="h-5 w-5" />
-            </button>
-            {/* Breadcrumb */}
-            <div className="hidden sm:flex items-center gap-2 text-sm">
-              <span className="text-gray-400">Home</span>
-              {location.pathname !== '/dashboard' && (
-                <>
-                  <span className="text-gray-300">/</span>
-                  <span className="text-gray-700 font-medium capitalize">
-                    {location.pathname.split('/').filter(Boolean)[0] || 'Dashboard'}
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
 
-          <div className="flex items-center gap-2">
-            {/* Search */}
-            <div className="relative">
-              <button
-                onClick={() => setShowSearch(!showSearch)}
-                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
-              >
-                <Search className="h-5 w-5" />
-              </button>
-              {showSearch && (
-                <div className="absolute right-0 top-12 w-80 bg-white rounded-lg shadow-xl border border-gray-200 p-3 z-50">
-                  <input
-                    type="text"
-                    placeholder="Search pages, employees..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    autoFocus
-                  />
-                  {searchResults.length > 0 && (
-                    <div className="mt-2 space-y-1">
-                      {searchResults.map((r, i) => (
-                        <button
-                          key={i}
-                          onClick={() => { navigate(r.path); setShowSearch(false); setSearchQuery(''); }}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 rounded-lg flex items-center gap-2"
-                        >
-                          <Search className="h-4 w-4 text-gray-400" />
-                          <span>{r.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+      {/* ======================================================
+          SIDEBAR
+          ====================================================== */}
 
-            {/* Dark mode toggle */}
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg hidden sm:flex"
-            >
-              {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-            </button>
+      <aside
+        className={`
+          fixed
+          inset-y-0
+          left-0
+          z-50
+          flex
+          flex-col
+          bg-white
+          border-r
+          border-gray-200
+          transition-all
+          duration-300
 
-            {/* Notifications */}
-            <button
-              onClick={() => navigate('/notifications')}
-              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg relative"
-            >
-              <Bell className="h-5 w-5" />
-              {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              )}
-            </button>
+          ${
+            sidebarCollapsed
+              ? 'w-20'
+              : 'w-64'
+          }
 
-            {/* User avatar */}
-            <button
-              onClick={() => navigate('/profile')}
-              className="flex items-center gap-2 pl-2 pr-3 py-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <div className="w-8 h-8 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-sm font-semibold">
-                {initials}
+          ${
+            mobileSidebarOpen
+              ? 'translate-x-0'
+              : '-translate-x-full lg:translate-x-0'
+          }
+        `}
+      >
+
+
+        {/* ====================================================
+            BRAND
+            ==================================================== */}
+
+        <div
+          className={`
+            flex
+            items-center
+            h-16
+            px-4
+            border-b
+            border-gray-200
+
+            ${
+              sidebarCollapsed
+                ? 'justify-center'
+                : 'justify-between'
+            }
+          `}
+        >
+
+          {!sidebarCollapsed && (
+            <div className="flex items-center gap-2">
+
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600">
+                <Building2 className="h-5 w-5 text-white" />
               </div>
-              <div className="hidden sm:block text-left">
-                <p className="text-sm font-medium text-gray-900 truncate max-w-[120px]">
-                  {profile ? `${profile.firstName} ${profile.lastName}` : 'User'}
+
+              <div>
+
+                <h1 className="text-lg font-bold text-gray-900">
+                  STAFFHUB
+                </h1>
+
+                <p className="text-[10px] text-gray-400">
+                  Staff Management
                 </p>
-                <p className="text-[10px] text-gray-500 truncate max-w-[120px]">{user?.role}</p>
+
               </div>
-            </button>
+
+            </div>
+          )}
+
+          {sidebarCollapsed && (
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600">
+              <Building2 className="h-5 w-5 text-white" />
+            </div>
+          )}
+
+        </div>
+
+
+        {/* ====================================================
+            NAVIGATION
+            ==================================================== */}
+
+        <nav className="flex-1 overflow-y-auto py-4">
+
+
+          {/* ==================================================
+              MAIN
+              ================================================== */}
+
+          {mainItems.length > 0 && (
+            <div className="px-3 mb-6">
+
+              {!sidebarCollapsed && (
+                <p className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                  Main
+                </p>
+              )}
+
+              <ul className="space-y-1">
+                {mainItems.map(renderNavItem)}
+              </ul>
+
+            </div>
+          )}
+
+
+          {/* ==================================================
+              MANAGEMENT
+              ================================================== */}
+
+          {managementItems.length > 0 && (
+            <div className="px-3 mb-6">
+
+              {!sidebarCollapsed && (
+                <p className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                  {managementLabel || 'Management'}
+                </p>
+              )}
+
+              <ul className="space-y-1">
+                {managementItems.map(renderNavItem)}
+              </ul>
+
+            </div>
+          )}
+
+
+          {/* ==================================================
+              PERSONAL
+              ================================================== */}
+
+          {personalItems.length > 0 && (
+            <div className="px-3">
+
+              {!sidebarCollapsed && (
+                <p className="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                  Personal
+                </p>
+              )}
+
+              <ul className="space-y-1">
+                {personalItems.map(renderNavItem)}
+              </ul>
+
+            </div>
+          )}
+
+        </nav>
+
+
+        {/* ====================================================
+            SIDEBAR COLLAPSE
+            ==================================================== */}
+
+        <div className="hidden lg:block border-t border-gray-200 p-3">
+
+          <button
+            type="button"
+            onClick={() =>
+              setSidebarCollapsed(
+                !sidebarCollapsed
+              )
+            }
+            className="flex w-full items-center justify-center rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition"
+            title={
+              sidebarCollapsed
+                ? 'Expand sidebar'
+                : 'Collapse sidebar'
+            }
+          >
+
+            {sidebarCollapsed ? (
+              <ChevronRight className="h-5 w-5" />
+            ) : (
+              <ChevronLeft className="h-5 w-5" />
+            )}
+
+          </button>
+
+        </div>
+
+      </aside>
+
+
+      {/* ======================================================
+          MAIN CONTENT
+          ====================================================== */}
+
+      <div
+        className={`
+          min-h-screen
+          transition-all
+          duration-300
+
+          ${
+            sidebarCollapsed
+              ? 'lg:pl-20'
+              : 'lg:pl-64'
+          }
+        `}
+      >
+
+
+        {/* ====================================================
+            HEADER
+            ==================================================== */}
+
+        <header className="sticky top-0 z-30 h-16 bg-white border-b border-gray-200">
+
+          <div className="flex h-full items-center justify-between px-4 sm:px-6">
+
+
+            {/* LEFT */}
+
+            <div className="flex items-center gap-3">
+
+              <button
+                type="button"
+                onClick={() =>
+                  setMobileSidebarOpen(true)
+                }
+                className="lg:hidden rounded-lg p-2 text-gray-500 hover:bg-gray-100"
+                aria-label="Open navigation"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+
+              <h2 className="text-lg font-semibold text-gray-900">
+                {pageTitle}
+              </h2>
+
+            </div>
+
+
+            {/* RIGHT */}
+
+            <div className="flex items-center gap-2">
+
+
+              {/* ==================================================
+                  SEARCH
+                  ================================================== */}
+
+              <div className="relative">
+
+                <button
+                  type="button"
+                  onClick={() => {
+
+                    setSearchOpen(!searchOpen);
+
+                    if (searchOpen) {
+                      setSearchQuery('');
+                    }
+
+                  }}
+                  className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                  aria-label="Search"
+                >
+
+                  {searchOpen ? (
+                    <X className="h-5 w-5" />
+                  ) : (
+                    <Search className="h-5 w-5" />
+                  )}
+
+                </button>
+
+
+                {searchOpen && (
+                  <div className="absolute right-0 top-12 w-80 rounded-xl border border-gray-200 bg-white shadow-lg">
+
+                    <div className="p-3">
+
+                      <div className="relative">
+
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+
+                        <input
+                          type="text"
+                          autoFocus
+                          value={searchQuery}
+                          onChange={(event) =>
+                            setSearchQuery(
+                              event.target.value
+                            )
+                          }
+                          placeholder="Search pages..."
+                          className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                        />
+
+                      </div>
+
+
+                      {searchQuery && (
+                        <div className="mt-2 max-h-72 overflow-y-auto">
+
+                          {searchResults.length === 0 ? (
+
+                            <p className="px-3 py-4 text-center text-sm text-gray-500">
+                              No results found
+                            </p>
+
+                          ) : (
+
+                            <ul className="space-y-1">
+
+                              {searchResults.map(
+                                (result, index) => (
+
+                                  <li
+                                    key={`${result.path}-${index}`}
+                                  >
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+
+                                        navigate(
+                                          result.path
+                                        );
+
+                                        setSearchOpen(false);
+                                        setSearchQuery('');
+
+                                      }}
+                                      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                                    >
+
+                                      <Search className="h-4 w-4 text-gray-400" />
+
+                                      <span>
+                                        {result.label}
+                                      </span>
+
+                                    </button>
+
+                                  </li>
+
+                                )
+                              )}
+
+                            </ul>
+
+                          )}
+
+                        </div>
+                      )}
+
+                    </div>
+
+                  </div>
+                )}
+
+              </div>
+
+
+              {/* ==================================================
+                  NOTIFICATIONS
+                  ================================================== */}
+
+              <button
+                type="button"
+                onClick={() =>
+                  navigate('/notifications')
+                }
+                className="relative rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Notifications"
+              >
+
+                <Bell className="h-5 w-5" />
+
+              </button>
+
+
+              {/* ==================================================
+                  PROFILE
+                  ================================================== */}
+
+              <div className="relative">
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setProfileMenuOpen(
+                      !profileMenuOpen
+                    )
+                  }
+                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-gray-100"
+                >
+
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100">
+
+                    <User className="h-4 w-4 text-indigo-700" />
+
+                  </div>
+
+                  <div className="hidden text-left sm:block">
+
+                    <p className="max-w-[150px] truncate text-sm font-medium text-gray-900">
+                      {displayName}
+                    </p>
+
+                    <p className="text-xs text-gray-500">
+                      {displayRole}
+                    </p>
+
+                  </div>
+
+                  <ChevronDown className="hidden h-4 w-4 text-gray-400 sm:block" />
+
+                </button>
+
+
+                {profileMenuOpen && (
+                  <div className="absolute right-0 top-12 w-56 rounded-xl border border-gray-200 bg-white py-2 shadow-lg">
+
+
+                    <div className="border-b border-gray-100 px-4 py-3">
+
+                      <p className="truncate text-sm font-medium text-gray-900">
+                        {displayName}
+                      </p>
+
+                      <p className="truncate text-xs text-gray-500">
+                        {displayEmail}
+                      </p>
+
+                    </div>
+
+
+                    <button
+                      type="button"
+                      onClick={() => {
+
+                        navigate('/profile');
+                        setProfileMenuOpen(false);
+
+                      }}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100"
+                    >
+
+                      <User className="h-4 w-4" />
+
+                      Profile
+
+                    </button>
+
+
+                    <button
+                      type="button"
+                      onClick={() => {
+
+                        navigate('/settings');
+                        setProfileMenuOpen(false);
+
+                      }}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-100"
+                    >
+
+                      <Settings className="h-4 w-4" />
+
+                      Settings
+
+                    </button>
+
+
+                    <div className="my-1 border-t border-gray-100" />
+
+
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50"
+                    >
+
+                      <LogOut className="h-4 w-4" />
+
+                      Logout
+
+                    </button>
+
+                  </div>
+                )}
+
+              </div>
+
+            </div>
+
           </div>
+
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
+
+        {/* ====================================================
+            PAGE CONTENT
+            ==================================================== */}
+
+        <main className="p-4 sm:p-6">
+
           <Outlet />
+
         </main>
+
       </div>
+
     </div>
   );
 }

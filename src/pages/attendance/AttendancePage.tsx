@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { attendanceService } from '@/services/dataServices';
@@ -7,9 +8,12 @@ import { DEPARTMENTS, ATTENDANCE_STATUSES } from '@/config';
 import { Clock, UserCheck, AlertTriangle, UserX, CalendarDays, Pencil, Trash2 } from 'lucide-react';
 
 export default function AttendancePage() {
-  const { user, profile, checkPermission } = useAuth();
+  const { user, profile } = useAuth();
+  const location = useLocation();
   const { addToast } = useToast();
-  const isEmployee = user?.role === 'Employee';
+  // The URL decides the data scope. A manager using MAIN must still see only their own records.
+  const isManagementView = location.pathname.startsWith('/management/');
+  const isEmployeeView = !isManagementView;
   const [records, setRecords] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -20,23 +24,37 @@ export default function AttendancePage() {
   const [currentPage, setCurrentPage] = useState(1);
   const perPage = 10;
 
-  useEffect(() => { loadData(); }, [search, statusFilter, deptFilter, dateFilter, user]);
+  useEffect(() => { loadData(); }, [search, statusFilter, deptFilter, dateFilter, user, isManagementView]);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      if (isEmployee && user) {
+      if (isEmployeeView && user) {
+        // MAIN / Attendance: only the currently logged-in employee.
         const data = await attendanceService.getByEmployee(user.employeeId);
-        const enriched = data.map((a: any) => {
-          return { ...a, employeeName: `${profile?.firstName || ''} ${profile?.lastName || ''}`, department: profile?.department || '' };
-        });
+        const enriched = data.map((a: any) => ({
+          ...a,
+          employeeName: `${profile?.firstName || ''} ${profile?.lastName || ''}`.trim() || 'Me',
+          department: profile?.department || '',
+        }));
         setRecords(enriched);
+
+        // Employee summary must also be calculated from that employee's records.
+        const dayRecords = enriched.filter((a: any) => a.date === dateFilter);
+        setSummary({
+          present: dayRecords.filter((a: any) => a.status === 'Present').length,
+          late: dayRecords.filter((a: any) => a.status === 'Late').length,
+          absent: dayRecords.filter((a: any) => a.status === 'Absent').length,
+          onLeave: dayRecords.filter((a: any) => a.status === 'On Leave').length,
+          halfDay: dayRecords.filter((a: any) => a.status === 'Half Day').length,
+          total: dayRecords.length,
+        });
       } else {
+        // MANAGEMENT / Attendance: authorized managers can see staff records.
         const data = await attendanceService.getAll({ date: dateFilter, status: statusFilter, department: deptFilter, search });
         setRecords(data);
+        setSummary(await attendanceService.getSummary(dateFilter));
       }
-      const s = await attendanceService.getSummary(dateFilter);
-      setSummary(s);
     } catch { } finally { setLoading(false); }
   };
 
@@ -47,7 +65,7 @@ export default function AttendancePage() {
 
   return (
     <div>
-      <PageHeader title={isEmployee ? 'My Attendance' : 'Attendance'} description={isEmployee ? 'View your attendance records' : 'Track and manage employee attendance'} />
+      <PageHeader title={isEmployeeView ? 'My Attendance' : 'Attendance Management'} description={isEmployeeView ? 'View your attendance records' : 'Track and manage employee attendance'} />
 
       {/* Summary cards */}
       {summary && (
@@ -62,8 +80,8 @@ export default function AttendancePage() {
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
-        {!isEmployee && <div className="flex-1"><SearchInput value={search} onChange={(v) => { setSearch(v); setCurrentPage(1); }} placeholder="Search employees..." /></div>}
-        {!isEmployee && <SelectFilter value={deptFilter} onChange={(v) => { setDeptFilter(v); setCurrentPage(1); }} options={DEPARTMENTS} placeholder="All Departments" />}
+        {!isEmployeeView && <div className="flex-1"><SearchInput value={search} onChange={(v) => { setSearch(v); setCurrentPage(1); }} placeholder="Search employees..." /></div>}
+        {!isEmployeeView && <SelectFilter value={deptFilter} onChange={(v) => { setDeptFilter(v); setCurrentPage(1); }} options={DEPARTMENTS} placeholder="All Departments" />}
         <SelectFilter value={statusFilter} onChange={(v) => { setStatusFilter(v); setCurrentPage(1); }} options={ATTENDANCE_STATUSES} />
         <input type="date" value={dateFilter} onChange={(e) => { setDateFilter(e.target.value); setCurrentPage(1); }} className="px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white" />
       </div>
@@ -75,7 +93,7 @@ export default function AttendancePage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    {!isEmployee && <th className="text-left py-3 px-4 font-medium text-gray-600">Employee</th>}
+                    {!isEmployeeView && <th className="text-left py-3 px-4 font-medium text-gray-600">Employee</th>}
                     <th className="text-left py-3 px-4 font-medium text-gray-600">Date</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-600">Status</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-600">Check In</th>
@@ -86,7 +104,7 @@ export default function AttendancePage() {
                 <tbody>
                   {paged.map((r: any) => (
                     <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50">
-                      {!isEmployee && <td className="py-3 px-4 font-medium text-gray-900">{r.employeeName}</td>}
+                      {!isEmployeeView && <td className="py-3 px-4 font-medium text-gray-900">{r.employeeName}</td>}
                       <td className="py-3 px-4 text-gray-600">{r.date}</td>
                       <td className="py-3 px-4"><Badge variant={statusBadge(r.status) as any} dot>{r.status}</Badge></td>
                       <td className="py-3 px-4 text-gray-600">{r.checkIn || '-'}</td>

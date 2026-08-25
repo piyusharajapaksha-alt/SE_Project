@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
@@ -9,10 +10,12 @@ import { CalendarDays, CheckCircle, XCircle, Clock, Send, Loader2, Plus } from '
 
 export default function LeavePage() {
   const { user, checkPermission } = useAuth();
+  const location = useLocation();
   const { addToast } = useToast();
   const navigate = useNavigate();
-  const isEmployee = user?.role === 'Employee';
-  const canApprove = checkPermission('leave.approve');
+  const isManagementView = location.pathname.startsWith('/management/');
+  const isEmployeeView = !isManagementView;
+  const canApprove = isManagementView && checkPermission('leave.approve');
 
   const [requests, setRequests] = useState<any[]>([]);
   const [balance, setBalance] = useState<any>(null);
@@ -34,13 +37,13 @@ export default function LeavePage() {
 
   const perPage = 10;
 
-  useEffect(() => { loadData(); }, [search, statusFilter, deptFilter, user]);
+  useEffect(() => { loadData(); }, [search, statusFilter, deptFilter, user, isManagementView]);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const filters: any = {};
-      if (isEmployee && user) filters.employeeId = user.employeeId;
+      if (isEmployeeView && user) filters.employeeId = user.employeeId;
       else {
         if (search) filters.search = search;
         if (deptFilter !== 'All') filters.department = deptFilter;
@@ -124,8 +127,8 @@ export default function LeavePage() {
 
   return (
     <div>
-      <PageHeader title={isEmployee ? 'My Leave' : 'Leave Management'} description={isEmployee ? 'Request and track your leave' : 'Manage leave requests and balances'}
-        action={isEmployee ? <button onClick={() => setShowForm(true)} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 flex items-center gap-2"><Plus className="h-4 w-4" />Request Leave</button> : undefined} />
+      <PageHeader title={isEmployeeView ? 'My Leave' : 'Leave Management'} description={isEmployeeView ? 'Request and track your leave' : 'Manage leave requests and balances'}
+        action={isEmployeeView ? <button onClick={() => setShowForm(true)} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 flex items-center gap-2"><Plus className="h-4 w-4" />Request Leave</button> : undefined} />
 
       {/* Leave Balance */}
       {balance && (
@@ -138,8 +141,8 @@ export default function LeavePage() {
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
-        {!isEmployee && <div className="flex-1"><SearchInput value={search} onChange={(v) => { setSearch(v); setCurrentPage(1); }} placeholder="Search employees..." /></div>}
-        {!isEmployee && <SelectFilter value={deptFilter} onChange={(v) => { setDeptFilter(v); setCurrentPage(1); }} options={DEPARTMENTS} placeholder="All Departments" />}
+        {!isEmployeeView && <div className="flex-1"><SearchInput value={search} onChange={(v) => { setSearch(v); setCurrentPage(1); }} placeholder="Search employees..." /></div>}
+        {!isEmployeeView && <SelectFilter value={deptFilter} onChange={(v) => { setDeptFilter(v); setCurrentPage(1); }} options={DEPARTMENTS} placeholder="All Departments" />}
         <SelectFilter value={statusFilter} onChange={(v) => { setStatusFilter(v); setCurrentPage(1); }} options={['Pending', 'Approved', 'Rejected', 'Cancelled']} />
       </div>
 
@@ -150,7 +153,7 @@ export default function LeavePage() {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    {!isEmployee && <th className="text-left py-3 px-4 font-medium text-gray-600">Employee</th>}
+                    {!isEmployeeView && <th className="text-left py-3 px-4 font-medium text-gray-600">Employee</th>}
                     <th className="text-left py-3 px-4 font-medium text-gray-600">Type</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-600">Start Date</th>
                     <th className="text-left py-3 px-4 font-medium text-gray-600 hidden sm:table-cell">End Date</th>
@@ -161,7 +164,7 @@ export default function LeavePage() {
                 <tbody>
                   {paged.map((r: any) => (
                     <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50">
-                      {!isEmployee && <td className="py-3 px-4 font-medium text-gray-900">{r.employeeName}</td>}
+                      {!isEmployeeView && <td className="py-3 px-4 font-medium text-gray-900">{r.employeeName}</td>}
                       <td className="py-3 px-4 text-gray-600">{r.type}</td>
                       <td className="py-3 px-4 text-gray-600">{r.startDate}</td>
                       <td className="py-3 px-4 text-gray-600 hidden sm:table-cell">{r.endDate}</td>
@@ -174,7 +177,7 @@ export default function LeavePage() {
                               <button onClick={() => { setShowApprove(r); setApproveAction('reject'); }} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg" title="Reject"><XCircle className="h-4 w-4" /></button>
                             </>
                           )}
-                          {isEmployee && r.status === 'Pending' && (
+                          {isEmployeeView && r.status === 'Pending' && (
                             <button onClick={() => handleCancel(r.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Cancel"><XCircle className="h-4 w-4" /></button>
                           )}
                         </div>
