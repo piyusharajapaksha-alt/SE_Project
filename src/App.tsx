@@ -30,6 +30,8 @@ import {
 // Attendance
 import AttendancePage from '@/pages/attendance/AttendancePage';
 
+import AttendanceMonitorPage from '@/pages/attendance/AttendanceMonitorPage';
+
 // Leave
 import LeavePage from '@/pages/leave/LeavePage';
 
@@ -212,6 +214,7 @@ export default function App() {
 
               {/* Employee Management */}
 
+
               <Route
                 path="/management/employees"
                 element={
@@ -256,6 +259,15 @@ export default function App() {
                 element={
                   <PermissionRoute permission="attendance.view-all">
                     <AttendancePage />
+                  </PermissionRoute>
+                }
+              />
+              
+              <Route
+                path="/management/attendance/monitor"
+                element={
+                  <PermissionRoute permission="attendance.view-all">
+                    <AttendanceMonitorPage />
                   </PermissionRoute>
                 }
               />

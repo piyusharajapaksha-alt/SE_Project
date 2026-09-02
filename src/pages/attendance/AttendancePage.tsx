@@ -1,13 +1,10 @@
-//import type { ReactNode } from 'react';
-
 import {
   useEffect,
-  useMemo,
   useState,
 } from 'react';
 
 import {
-  useLocation,
+  useNavigate,
 } from 'react-router-dom';
 
 import {
@@ -16,19 +13,10 @@ import {
   ScanLine,
   CheckCircle2,
   LogOut,
-  RefreshCw,
-  ShieldCheck,
-  Users,
   UserCheck,
-  UserX,
-  Timer,
-  Smartphone,
-  XCircle,
+  Play,
+  Square,
 } from 'lucide-react';
-
-import {
-  QRCodeSVG,
-} from 'qrcode.react';
 
 import {
   Html5Qrcode,
@@ -43,35 +31,20 @@ import {
 } from '@/contexts/ToastContext';
 
 import {
-  attendanceService,
-} from '@/services/dataServices';
-
-import {
-  createQrSession,
-  getCurrentQrSession,
-  getRemainingSeconds,
   getEmployeeTodayRecord,
   getEmployeeRecords,
-  getTodayQrAttendance,
   checkInEmployee,
   checkOutEmployee,
-  deactivateQrSession,
-  type AttendanceQrSession,
+  getAttendanceSession,
+  startAttendanceSession,
+  stopAttendanceSession,
   type QrAttendanceRecord,
 } from '@/services/attendanceQrService';
 
 import {
   PageHeader,
-  Badge,
   StatCard,
-  LoadingState,
-  EmptyState,
 } from '@/components/ui';
-
-
-// ============================================================
-// TYPES
-// ============================================================
 
 type ScannerStatus =
   | 'idle'
@@ -79,11 +52,6 @@ type ScannerStatus =
   | 'scanning'
   | 'success'
   | 'error';
-
-
-// ============================================================
-// MAIN PAGE
-// ============================================================
 
 export default function AttendancePage() {
   const {
@@ -95,481 +63,352 @@ export default function AttendancePage() {
     addToast,
   } = useToast();
 
-  const location = useLocation();
+  const navigate =
+    useNavigate();
 
-  const isManagementView =
-    location.pathname.startsWith(
-      '/management/'
-    );
-
-  // ----------------------------------------------------------
-  // Employee state
-  // ----------------------------------------------------------
+  // ==========================================================
+  // EMPLOYEE
+  // ==========================================================
 
   const [
     todayRecord,
     setTodayRecord,
-  ] = useState<QrAttendanceRecord | null>(null);
+  ] =
+    useState<QrAttendanceRecord | null>(
+      null
+    );
 
   const [
-    employeeHistory,
-    setEmployeeHistory,
-  ] = useState<QrAttendanceRecord[]>([]);
+    history,
+    setHistory,
+  ] =
+    useState<QrAttendanceRecord[]>(
+      []
+    );
 
   const [
     scannerOpen,
     setScannerOpen,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
     scannerStatus,
     setScannerStatus,
-  ] = useState<ScannerStatus>('idle');
+  ] =
+    useState<ScannerStatus>(
+      'idle'
+    );
 
   const [
     scannerMessage,
     setScannerMessage,
-  ] = useState('');
-
-  // ----------------------------------------------------------
-  // Management state
-  // ----------------------------------------------------------
-
-  const [
-    qrSession,
-    setQrSession,
-  ] = useState<AttendanceQrSession | null>(
-    null
-  );
-
-  const [
-    remainingSeconds,
-    setRemainingSeconds,
-  ] = useState(0);
-
-  const [
-    managementRecords,
-    setManagementRecords,
-  ] = useState<QrAttendanceRecord[]>([]);
-
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
-
+  ] =
+    useState('');
 
   // ==========================================================
-  // EMPLOYEE DATA
+  // LOAD EMPLOYEE ATTENDANCE
   // ==========================================================
 
-  const loadEmployeeAttendance =
+  const loadAttendance =
     () => {
-      if (!user?.employeeId) return;
+      if (!user?.employeeId) {
+        return;
+      }
 
-      const record =
+      setTodayRecord(
         getEmployeeTodayRecord(
           user.employeeId
-        );
+        )
+      );
 
-      setTodayRecord(record);
-
-      setEmployeeHistory(
+      setHistory(
         getEmployeeRecords(
           user.employeeId
         )
       );
     };
 
-
-  // ==========================================================
-  // MANAGEMENT DATA
-  // ==========================================================
-
-  const loadManagementAttendance =
-    async () => {
-      setLoading(true);
-
-      try {
-        const qrRecords =
-          getTodayQrAttendance();
-
-        setManagementRecords(
-          qrRecords
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
-
-
-  // ==========================================================
-  // INITIAL LOAD
-  // ==========================================================
-
   useEffect(() => {
-    if (isManagementView) {
-      loadManagementAttendance();
-    } else {
-      loadEmployeeAttendance();
-      setLoading(false);
-    }
+    loadAttendance();
   }, [
-    isManagementView,
     user?.employeeId,
   ]);
-
-
-  // ==========================================================
-  // QR SESSION TIMER
-  // ==========================================================
-
-  useEffect(() => {
-    if (!isManagementView) return;
-
-    const existing =
-      getCurrentQrSession();
-
-    if (existing) {
-      setQrSession(existing);
-      setRemainingSeconds(
-        getRemainingSeconds()
-      );
-    }
-
-    const timer =
-      window.setInterval(() => {
-        const seconds =
-          getRemainingSeconds();
-
-        setRemainingSeconds(
-          seconds
-        );
-
-        if (seconds === 0) {
-          setQrSession(null);
-        }
-      }, 1000);
-
-    return () =>
-      window.clearInterval(timer);
-  }, [isManagementView]);
-
-
-  // ==========================================================
-  // GENERATE QR
-  // ==========================================================
-
-  const generateQr = () => {
-    deactivateQrSession();
-
-    const session =
-      createQrSession();
-
-    setQrSession(session);
-
-    setRemainingSeconds(60);
-
-    addToast('success',
-      'Attendance QR code generated.',
-      'success'
-    );
-  };
-
-
-  // ==========================================================
-  // CLOSE QR
-  // ==========================================================
-
-  const closeQr = () => {
-    deactivateQrSession();
-
-    setQrSession(null);
-
-    setRemainingSeconds(0);
-  };
-
 
   // ==========================================================
   // START SCANNER
   // ==========================================================
 
-  const startScanner = async () => {
-    setScannerOpen(true);
+  const startScanner =
+    async () => {
+      setScannerOpen(true);
 
-    setScannerStatus(
-      'starting'
-    );
+      setScannerStatus(
+        'starting'
+      );
 
-    setScannerMessage(
-      'Starting camera...'
-    );
+      setScannerMessage(
+        'Starting camera...'
+      );
 
-    await new Promise(
-      (resolve) =>
-        setTimeout(resolve, 300)
-    );
+      await new Promise(
+        (resolve) =>
+          setTimeout(
+            resolve,
+            300
+          )
+      );
 
-    try {
-      const scanner =
-        new Html5Qrcode(
-          'staffhub-qr-reader'
+      try {
+        const scanner =
+          new Html5Qrcode(
+            'staffhub-qr-reader'
+          );
+
+        setScannerStatus(
+          'scanning'
         );
 
-      setScannerStatus(
-        'scanning'
-      );
+        setScannerMessage(
+          'Point your camera at the attendance QR code.'
+        );
 
-      setScannerMessage(
-        'Point your camera at the attendance QR code.'
-      );
-
-      await scanner.start(
-        {
-          facingMode: 'environment',
-        },
-        {
-          fps: 10,
-          qrbox: {
-            width: 250,
-            height: 250,
+        await scanner.start(
+          {
+            facingMode:
+              'environment',
           },
-        },
-        async (decodedText) => {
-          try {
-            await scanner.stop();
+          {
+            fps: 10,
 
-            await scanner.clear();
+            qrbox: {
+              width: 250,
+              height: 250,
+            },
+          },
+          async (
+            decodedText
+          ) => {
+            try {
+              await scanner.stop();
 
-            handleScannedQr(
-              decodedText
-            );
-          } catch (error) {
-            console.error(
+              await scanner.clear();
+
+              await handleScannedQr(
+                decodedText
+              );
+            } catch (
               error
-            );
+            ) {
+              console.error(
+                error
+              );
+            }
+          },
+          () => {
+            // Ignore normal camera frame failures.
           }
-        },
-        () => {
-          // Ignore normal scanner
-          // frame failures.
-        }
-      );
-    } catch (error) {
-      console.error(
-        'Camera error:',
+        );
+      } catch (
         error
-      );
+      ) {
+        console.error(
+          error
+        );
 
-      setScannerStatus(
-        'error'
-      );
+        setScannerStatus(
+          'error'
+        );
 
-      setScannerMessage(
-        'Camera could not be started. Please allow camera permission and try again.'
-      );
-    }
-  };
-
+        setScannerMessage(
+          'Camera could not be started. Please allow camera permission.'
+        );
+      }
+    };
 
   // ==========================================================
   // STOP SCANNER
   // ==========================================================
 
-  const stopScanner = async () => {
-    try {
-      const scanner =
-        new Html5Qrcode(
-          'staffhub-qr-reader'
+  const stopScanner =
+    () => {
+      setScannerOpen(
+        false
+      );
+
+      setScannerStatus(
+        'idle'
+      );
+
+      setScannerMessage(
+        ''
+      );
+    };
+
+  // ==========================================================
+  // SCAN
+  // ==========================================================
+
+  const handleScannedQr =
+    async (
+      token: string
+    ) => {
+      if (!user?.employeeId) {
+        return;
+      }
+
+      try {
+        const employeeName =
+          `${profile?.firstName || ''} ${
+            profile?.lastName || ''
+          }`.trim() ||
+          'Employee';
+
+        const currentRecord =
+          getEmployeeTodayRecord(
+            user.employeeId
+          );
+
+        if (!currentRecord) {
+
+          const result =
+            checkInEmployee(
+              user.employeeId,
+              employeeName,
+              token
+            );
+
+          setTodayRecord(
+            result.record
+          );
+
+          setHistory(
+            getEmployeeRecords(
+              user.employeeId
+            )
+          );
+
+          setScannerStatus(
+            'success'
+          );
+
+          setScannerMessage(
+            `Welcome ${employeeName}! Check-in successful at ${result.record.checkIn}.`
+          );
+
+          addToast(
+            'success',
+            'Check-in successful.',
+            'success'
+          );
+
+        } else if (
+          !currentRecord.checkOut
+        ) {
+
+          const result =
+            checkOutEmployee(
+              user.employeeId,
+              token
+            );
+
+          setTodayRecord(
+            result.record
+          );
+
+          setHistory(
+            getEmployeeRecords(
+              user.employeeId
+            )
+          );
+
+          setScannerStatus(
+            'success'
+          );
+
+          setScannerMessage(
+            `Goodbye ${employeeName}! Check-out successful at ${result.record.checkOut}.`
+          );
+
+          addToast(
+            'success',
+            'Check-out successful.',
+            'success'
+          );
+
+        } else {
+
+          throw new Error(
+            'You have already completed attendance for today.'
+          );
+        }
+
+        setTimeout(
+          () => {
+            setScannerOpen(
+              false
+            );
+
+            setScannerStatus(
+              'idle'
+            );
+
+            setScannerMessage(
+              ''
+            );
+          },
+          2500
         );
 
-      if (
-        scanner.getState() === 2
+      } catch (
+        error: any
       ) {
-        await scanner.stop();
-      }
-    } catch {
-      // Scanner may already
-      // have been stopped.
-    }
-
-    setScannerOpen(false);
-
-    setScannerStatus(
-      'idle'
-    );
-
-    setScannerMessage('');
-  };
-
-
-  // ==========================================================
-  // HANDLE QR
-  // ==========================================================
-
-  const handleScannedQr = (
-    token: string
-  ) => {
-    if (!user?.employeeId) {
-      addToast('error',
-        'Employee information is not available.',
-        'error'
-      );
-
-      return;
-    }
-
-    try {
-      const employeeName =
-        `${profile?.firstName || ''} ${
-          profile?.lastName || ''
-        }`.trim() ||
-        'Employee';
-
-      let record;
-
-      if (!todayRecord) {
-        record =
-          checkInEmployee(
-            user.employeeId,
-            employeeName,
-            token
-          );
-
-        addToast('success',
-          `Check-in successful at ${record.checkIn}.`,
-          'success'
+        console.error(
+          error
         );
-      } else {
-        record =
-          checkOutEmployee(
-            user.employeeId,
-            token
-          );
 
-        addToast('success',
-          `Check-out successful at ${record.checkOut}.`,
-          'success'
+        setScannerStatus(
+          'error'
+        );
+
+        setScannerMessage(
+          error?.message ||
+            'Attendance failed.'
+        );
+
+        addToast(
+          'error',
+          error?.message ||
+            'Attendance failed.',
+          'error'
         );
       }
-
-      setTodayRecord(
-        record
-      );
-
-      setEmployeeHistory(
-        getEmployeeRecords(
-          user.employeeId
-        )
-      );
-
-      setScannerStatus(
-        'success'
-      );
-
-      setScannerMessage(
-        !todayRecord
-          ? 'Check-in completed successfully.'
-          : 'Check-out completed successfully.'
-      );
-
-      setTimeout(() => {
-        setScannerOpen(false);
-        setScannerStatus('idle');
-      }, 1200);
-
-    } catch (error: any) {
-      setScannerStatus(
-        'error'
-      );
-
-      setScannerMessage(
-        error?.message ||
-          'Unable to record attendance.'
-      );
-
-      addToast(
-        error?.message ||
-          'Attendance failed.',
-        'error'
-      );
-    }
-  };
-
-
-  // ==========================================================
-  // MANAGEMENT STATS
-  // ==========================================================
-
-  const managementStats =
-    useMemo(() => {
-      const present =
-        managementRecords.filter(
-          (r) =>
-            r.status === 'Present'
-        ).length;
-
-      const late =
-        managementRecords.filter(
-          (r) =>
-            r.status === 'Late'
-        ).length;
-
-      const checkedOut =
-        managementRecords.filter(
-          (r) =>
-            !!r.checkOut
-        ).length;
-
-      return {
-        present,
-        late,
-        checkedOut,
-      };
-    }, [
-      managementRecords,
-    ]);
-
+    };
 
   // ==========================================================
   // EMPLOYEE VIEW
-  // ==========================================================
-
-  if (!isManagementView) {
-    return (
-      <EmployeeAttendanceView
-        todayRecord={todayRecord}
-        history={employeeHistory}
-        scannerOpen={scannerOpen}
-        scannerStatus={scannerStatus}
-        scannerMessage={scannerMessage}
-        onOpenScanner={startScanner}
-        onCloseScanner={stopScanner}
-      />
-    );
-  }
-
-
-  // ==========================================================
-  // MANAGEMENT VIEW
   // ==========================================================
 
   return (
     <div className="space-y-6">
 
       <PageHeader
-        title="Attendance Management"
-        description="Generate secure QR codes and monitor employee attendance."
+        title="My Attendance"
+        description="Scan the live StaffHub QR code to check in or check out."
       />
 
-      {/* =====================================================
-          MANAGEMENT STATS
-          ===================================================== */}
+      {/* ======================================================
+          TODAY STATUS
+          ====================================================== */}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
         <StatCard
-          title="Checked In"
-          value={managementStats.present}
+          title="Check In"
+          value={
+            todayRecord?.checkIn ||
+            '--'
+          }
           icon={
             <UserCheck className="h-5 w-5" />
           }
@@ -577,229 +416,158 @@ export default function AttendancePage() {
         />
 
         <StatCard
-          title="Late"
-          value={managementStats.late}
-          icon={
-            <Clock className="h-5 w-5" />
+          title="Check Out"
+          value={
+            todayRecord?.checkOut ||
+            '--'
           }
-          color="amber"
-        />
-
-        <StatCard
-          title="Checked Out"
-          value={managementStats.checkedOut}
           icon={
             <LogOut className="h-5 w-5" />
           }
           color="purple"
         />
 
+        <StatCard
+          title="Status"
+          value={
+            todayRecord?.status ||
+            'Not Marked'
+          }
+          icon={
+            <Clock className="h-5 w-5" />
+          }
+          color="blue"
+        />
+
       </div>
 
+      {/* ======================================================
+          SCAN CARD
+          ====================================================== */}
 
-      {/* =====================================================
-          QR GENERATOR
-          ===================================================== */}
+      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
 
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="p-6 border-b border-gray-100">
 
-        <div className="p-6 border-b border-gray-100 flex items-center justify-between gap-4">
+          <h2 className="text-xl font-bold text-gray-900">
+            QR Attendance
+          </h2>
 
-          <div>
-
-            <div className="flex items-center gap-2">
-
-              <div className="h-10 w-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-
-                <QrCode className="h-5 w-5 text-indigo-600" />
-
-              </div>
-
-              <div>
-
-                <h2 className="text-lg font-semibold text-gray-900">
-                  Attendance QR Code
-                </h2>
-
-                <p className="text-sm text-gray-500">
-                  Employees scan this code to record attendance.
-                </p>
-
-              </div>
-
-            </div>
-
-          </div>
-
-
-          {qrSession && remainingSeconds > 0 && (
-
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-50 text-green-700 text-sm font-medium">
-
-              <Timer className="h-4 w-4" />
-
-              Active · {remainingSeconds}s
-
-            </div>
-
-          )}
+          <p className="text-sm text-gray-500 mt-1">
+            Scan the QR code displayed on the attendance monitor.
+          </p>
 
         </div>
 
+        <div className="p-8">
 
-        <div className="p-6">
+          {!scannerOpen ? (
 
-          {!qrSession || remainingSeconds <= 0 ? (
+            <div className="max-w-md mx-auto text-center">
 
-            <div className="text-center py-10">
+              <div className="mx-auto h-24 w-24 rounded-3xl bg-indigo-50 flex items-center justify-center">
 
-              <div className="mx-auto h-20 w-20 rounded-2xl bg-indigo-50 flex items-center justify-center mb-5">
-
-                <QrCode className="h-10 w-10 text-indigo-600" />
+                <QrCode className="h-12 w-12 text-indigo-600" />
 
               </div>
 
-              <h3 className="text-lg font-semibold text-gray-900">
-                No active QR code
+              <h3 className="mt-6 text-2xl font-bold text-gray-900">
+                {todayRecord?.checkOut
+                  ? 'Attendance Completed'
+                  : todayRecord?.checkIn
+                    ? 'Ready for Check-Out'
+                    : 'Ready for Check-In'}
               </h3>
 
-              <p className="text-sm text-gray-500 max-w-md mx-auto mt-2">
-                Generate a temporary QR code for employees to scan.
-                Each QR code automatically expires after 60 seconds.
+              <p className="mt-2 text-gray-500">
+                {todayRecord?.checkOut
+                  ? 'You have completed your attendance for today.'
+                  : 'Open your camera and scan the live QR code.'}
               </p>
 
-              <button
-                type="button"
-                onClick={generateQr}
-                className="mt-6 inline-flex items-center gap-2 px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition"
-              >
-                <QrCode className="h-5 w-5" />
-                Generate QR Code
-              </button>
+              {!todayRecord?.checkOut && (
+
+                <button
+                  type="button"
+                  onClick={
+                    startScanner
+                  }
+                  className="mt-7 inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold"
+                >
+                  <ScanLine className="h-5 w-5" />
+
+                  {todayRecord?.checkIn
+                    ? 'Scan to Check Out'
+                    : 'Scan to Check In'}
+
+                </button>
+
+              )}
 
             </div>
 
           ) : (
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+            <div className="max-w-xl mx-auto">
 
-              {/* QR */}
+              {scannerStatus ===
+                'success' ? (
 
-              <div className="flex flex-col items-center">
+                <div className="text-center py-10">
 
-                <div className="p-5 bg-white rounded-2xl border-2 border-gray-100 shadow-sm">
+                  <div className="mx-auto h-24 w-24 rounded-full bg-green-100 flex items-center justify-center">
 
-                  <QRCodeSVG
-                    value={qrSession.token}
-                    size={280}
-                    level="H"
-                    includeMargin
-                  />
-
-                </div>
-
-                <div className="mt-5 text-center">
-
-                  <div className="flex items-center justify-center gap-2 text-green-600 font-semibold">
-
-                    <CheckCircle2 className="h-5 w-5" />
-
-                    QR Code Active
+                    <CheckCircle2 className="h-12 w-12 text-green-600" />
 
                   </div>
 
-                  <p className="text-sm text-gray-500 mt-1">
-                    Expires in {remainingSeconds} seconds
+                  <h3 className="mt-6 text-2xl font-bold text-green-600">
+                    Success!
+                  </h3>
+
+                  <p className="mt-3 text-lg text-gray-700">
+                    {scannerMessage}
                   </p>
 
                 </div>
 
-                <div className="flex gap-3 mt-5">
+              ) : (
 
-                  <button
-                    type="button"
-                    onClick={generateQr}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    New QR
-                  </button>
+                <>
 
-                  <button
-                    type="button"
-                    onClick={closeQr}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 border border-red-200 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50"
-                  >
-                    <XCircle className="h-4 w-4" />
-                    Stop
-                  </button>
+                  <div
+                    id="staffhub-qr-reader"
+                    className="w-full overflow-hidden rounded-2xl"
+                  />
 
-                </div>
+                  <div className="mt-5 text-center">
 
-              </div>
+                    <p
+                      className={`text-sm ${
+                        scannerStatus ===
+                        'error'
+                          ? 'text-red-600'
+                          : 'text-gray-600'
+                      }`}
+                    >
+                      {scannerMessage}
+                    </p>
 
-
-              {/* Instructions */}
-
-              <div>
-
-                <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-5">
-
-                  <div className="flex items-start gap-3">
-
-                    <ShieldCheck className="h-6 w-6 text-indigo-600 mt-0.5" />
-
-                    <div>
-
-                      <h3 className="font-semibold text-gray-900">
-                        Secure attendance session
-                      </h3>
-
-                      <p className="text-sm text-gray-600 mt-1">
-                        This QR code contains a temporary
-                        attendance token. It expires automatically
-                        after 60 seconds.
-                      </p>
-
-                    </div>
+                    <button
+                      type="button"
+                      onClick={
+                        stopScanner
+                      }
+                      className="mt-5 px-5 py-2.5 border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
 
                   </div>
 
-                </div>
+                </>
 
-
-                <div className="mt-5 space-y-4">
-
-                  <Instruction
-                    number="1"
-                    icon={
-                      <Smartphone className="h-5 w-5" />
-                    }
-                    title="Employee opens Attendance"
-                    text="The employee opens the Attendance page after logging in."
-                  />
-
-                  <Instruction
-                    number="2"
-                    icon={
-                      <ScanLine className="h-5 w-5" />
-                    }
-                    title="Employee scans QR"
-                    text="The employee uses the phone camera scanner to scan this QR code."
-                  />
-
-                  <Instruction
-                    number="3"
-                    icon={
-                      <CheckCircle2 className="h-5 w-5" />
-                    }
-                    title="Attendance recorded"
-                    text="The system records check-in or check-out with the current time."
-                  />
-
-                </div>
-
-              </div>
+              )}
 
             </div>
 
@@ -809,491 +577,24 @@ export default function AttendancePage() {
 
       </div>
 
-
-      {/* =====================================================
-          TODAY'S RECORDS
-          ===================================================== */}
-
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-
-        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-
-          <div>
-
-            <h2 className="text-lg font-semibold text-gray-900">
-              Today's QR Attendance
-            </h2>
-
-            <p className="text-sm text-gray-500 mt-1">
-              Employees who recorded attendance using QR.
-            </p>
-
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              loadManagementAttendance();
-
-              addToast('success',
-                'Attendance records refreshed.',
-                'success'
-              );
-            }}
-            className="inline-flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </button>
-
-        </div>
-
-
-        {loading ? (
-
-          <div className="p-8">
-            <LoadingState />
-          </div>
-
-        ) : managementRecords.length === 0 ? (
-
-          <div className="p-8">
-
-            <EmptyState
-              icon={
-                <Users className="h-6 w-6" />
-              }
-              title="No QR attendance yet"
-            />
-
-          </div>
-
-        ) : (
-
-          <div className="overflow-x-auto">
-
-            <table className="w-full text-sm">
-
-              <thead className="bg-gray-50">
-
-                <tr>
-
-                  <th className="text-left py-3 px-5 font-medium text-gray-600">
-                    Employee
-                  </th>
-
-                  <th className="text-left py-3 px-5 font-medium text-gray-600">
-                    Employee ID
-                  </th>
-
-                  <th className="text-left py-3 px-5 font-medium text-gray-600">
-                    Check In
-                  </th>
-
-                  <th className="text-left py-3 px-5 font-medium text-gray-600">
-                    Check Out
-                  </th>
-
-                  <th className="text-left py-3 px-5 font-medium text-gray-600">
-                    Status
-                  </th>
-
-                </tr>
-
-              </thead>
-
-              <tbody>
-
-                {managementRecords.map(
-                  (record) => (
-
-                    <tr
-                      key={record.id}
-                      className="border-t border-gray-100 hover:bg-gray-50"
-                    >
-
-                      <td className="py-4 px-5">
-
-                        <div className="font-medium text-gray-900">
-                          {record.employeeName}
-                        </div>
-
-                      </td>
-
-                      <td className="py-4 px-5 text-gray-600">
-                        {record.employeeId}
-                      </td>
-
-                      <td className="py-4 px-5 text-gray-600">
-                        {record.checkIn || '-'}
-                      </td>
-
-                      <td className="py-4 px-5 text-gray-600">
-                        {record.checkOut || '-'}
-                      </td>
-
-                      <td className="py-4 px-5">
-
-                        <Badge
-                          variant={
-                            record.status === 'Present'
-                              ? 'success'
-                              : record.status === 'Late'
-                              ? 'warning'
-                              : 'danger'
-                          }
-                          dot
-                        >
-                          {record.status}
-                        </Badge>
-
-                      </td>
-
-                    </tr>
-
-                  )
-                )}
-
-              </tbody>
-
-            </table>
-
-          </div>
-
-        )}
-
-      </div>
-
-    </div>
-  );
-}
-
-
-// ============================================================
-// EMPLOYEE ATTENDANCE VIEW
-// ============================================================
-
-function EmployeeAttendanceView({
-  todayRecord,
-  history,
-  scannerOpen,
-  scannerStatus,
-  scannerMessage,
-  onOpenScanner,
-  onCloseScanner,
-}: {
-  todayRecord: QrAttendanceRecord | null;
-  history: QrAttendanceRecord[];
-  scannerOpen: boolean;
-  scannerStatus: ScannerStatus;
-  scannerMessage: string;
-  onOpenScanner: () => void;
-  onCloseScanner: () => void;
-}) {
-
-  const canCheckIn =
-    !todayRecord?.checkIn;
-
-  const canCheckOut =
-    !!todayRecord?.checkIn &&
-    !todayRecord?.checkOut;
-
-
-  return (
-    <div className="space-y-6">
-
-      <PageHeader
-        title="My Attendance"
-        description="Record your daily attendance by scanning the StaffHub QR code."
-      />
-
-
-      {/* =====================================================
-          TODAY
-          ===================================================== */}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-
-          <div className="flex items-start justify-between gap-4">
-
-            <div>
-
-              <p className="text-sm text-gray-500">
-                Today's attendance
-              </p>
-
-              <h2 className="text-2xl font-bold text-gray-900 mt-1">
-                {todayRecord
-                  ? todayRecord.status
-                  : 'Not Checked In'}
-              </h2>
-
-            </div>
-
-            <div className="h-12 w-12 rounded-xl bg-indigo-50 flex items-center justify-center">
-
-              {todayRecord ? (
-                <CheckCircle2 className="h-6 w-6 text-indigo-600" />
-              ) : (
-                <Clock className="h-6 w-6 text-indigo-600" />
-              )}
-
-            </div>
-
-          </div>
-
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
-
-            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-
-              <p className="text-xs text-gray-500 uppercase tracking-wide">
-                Check In
-              </p>
-
-              <p className="text-xl font-semibold text-gray-900 mt-1">
-                {todayRecord?.checkIn || '--:--'}
-              </p>
-
-            </div>
-
-
-            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-
-              <p className="text-xs text-gray-500 uppercase tracking-wide">
-                Check Out
-              </p>
-
-              <p className="text-xl font-semibold text-gray-900 mt-1">
-                {todayRecord?.checkOut || '--:--'}
-              </p>
-
-            </div>
-
-          </div>
-
-
-          {/* Action */}
-
-          <div className="mt-6">
-
-            {canCheckIn && (
-
-              <button
-                type="button"
-                onClick={onOpenScanner}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold transition"
-              >
-                <ScanLine className="h-5 w-5" />
-                Scan QR to Check In
-              </button>
-
-            )}
-
-
-            {canCheckOut && (
-
-              <button
-                type="button"
-                onClick={onOpenScanner}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 bg-gray-900 hover:bg-gray-800 text-white rounded-xl font-semibold transition"
-              >
-                <ScanLine className="h-5 w-5" />
-                Scan QR to Check Out
-              </button>
-
-            )}
-
-
-            {!canCheckIn &&
-              !canCheckOut && (
-
-                <div className="inline-flex items-center gap-2 px-4 py-3 bg-green-50 text-green-700 rounded-xl font-medium">
-
-                  <CheckCircle2 className="h-5 w-5" />
-
-                  Attendance completed for today
-
-                </div>
-
-              )}
-
-          </div>
-
-        </div>
-
-
-        {/* Status */}
-
-        <div className="bg-indigo-600 rounded-2xl p-6 text-white">
-
-          <div className="h-12 w-12 rounded-xl bg-white/15 flex items-center justify-center">
-
-            <QrCode className="h-6 w-6" />
-
-          </div>
-
-          <h3 className="text-lg font-semibold mt-5">
-            QR Attendance
-          </h3>
-
-          <p className="text-sm text-indigo-100 mt-2 leading-6">
-            Scan the temporary QR code displayed
-            by your HR manager or department manager.
-          </p>
-
-          <div className="mt-6 space-y-3 text-sm">
-
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4" />
-              Secure temporary QR
-            </div>
-
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4" />
-              Automatic time recording
-            </div>
-
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4" />
-              Check-in and check-out
-            </div>
-
-          </div>
-
-        </div>
-
-      </div>
-
-
-      {/* =====================================================
-          SCANNER
-          ===================================================== */}
-
-      {scannerOpen && (
-
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-
-          <div className="p-5 border-b border-gray-100 flex items-center justify-between">
-
-            <div>
-
-              <h2 className="font-semibold text-gray-900">
-                Scan Attendance QR
-              </h2>
-
-              <p className="text-sm text-gray-500 mt-1">
-                Position the QR code inside the camera box.
-              </p>
-
-            </div>
-
-            <button
-              type="button"
-              onClick={onCloseScanner}
-              className="h-9 w-9 rounded-lg hover:bg-gray-100 flex items-center justify-center"
-            >
-              <XCircle className="h-5 w-5 text-gray-500" />
-            </button>
-
-          </div>
-
-
-          <div className="p-6">
-
-            <div className="max-w-md mx-auto">
-
-              <div
-                id="staffhub-qr-reader"
-                className="overflow-hidden rounded-2xl border border-gray-200"
-              />
-
-
-              {scannerStatus === 'success' && (
-
-                <div className="mt-4 p-4 rounded-xl bg-green-50 text-green-700 flex items-center gap-3">
-
-                  <CheckCircle2 className="h-5 w-5" />
-
-                  <span className="text-sm font-medium">
-                    {scannerMessage}
-                  </span>
-
-                </div>
-
-              )}
-
-
-              {scannerStatus === 'error' && (
-
-                <div className="mt-4 p-4 rounded-xl bg-red-50 text-red-700 flex items-center gap-3">
-
-                  <XCircle className="h-5 w-5" />
-
-                  <span className="text-sm font-medium">
-                    {scannerMessage}
-                  </span>
-
-                </div>
-
-              )}
-
-
-              {scannerStatus === 'scanning' && (
-
-                <div className="mt-4 p-4 rounded-xl bg-indigo-50 text-indigo-700 flex items-center gap-3">
-
-                  <ScanLine className="h-5 w-5" />
-
-                  <span className="text-sm">
-                    {scannerMessage}
-                  </span>
-
-                </div>
-
-              )}
-
-            </div>
-
-          </div>
-
-        </div>
-
-      )}
-
-
-      {/* =====================================================
+      {/* ======================================================
           HISTORY
-          ===================================================== */}
+          ====================================================== */}
 
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
 
         <div className="p-6 border-b border-gray-100">
 
-          <h2 className="text-lg font-semibold text-gray-900">
-            QR Attendance History
+          <h2 className="text-lg font-bold text-gray-900">
+            Attendance History
           </h2>
-
-          <p className="text-sm text-gray-500 mt-1">
-            Attendance records recorded through QR scanning.
-          </p>
 
         </div>
 
-
         {history.length === 0 ? (
 
-          <div className="p-8">
-
-            <EmptyState
-              icon={
-                <Clock className="h-6 w-6" />
-              }
-              title="No QR attendance records yet"
-            />
-
+          <div className="p-8 text-center text-gray-500">
+            No attendance records yet.
           </div>
 
         ) : (
@@ -1306,19 +607,19 @@ function EmployeeAttendanceView({
 
                 <tr>
 
-                  <th className="text-left py-3 px-5 font-medium text-gray-600">
+                  <th className="text-left px-6 py-4">
                     Date
                   </th>
 
-                  <th className="text-left py-3 px-5 font-medium text-gray-600">
+                  <th className="text-left px-6 py-4">
                     Check In
                   </th>
 
-                  <th className="text-left py-3 px-5 font-medium text-gray-600">
+                  <th className="text-left px-6 py-4">
                     Check Out
                   </th>
 
-                  <th className="text-left py-3 px-5 font-medium text-gray-600">
+                  <th className="text-left px-6 py-4">
                     Status
                   </th>
 
@@ -1330,43 +631,36 @@ function EmployeeAttendanceView({
 
                 {history.map(
                   (record) => (
-
                     <tr
-                      key={record.id}
-                      className="border-t border-gray-100 hover:bg-gray-50"
+                      key={
+                        record.id
+                      }
+                      className="border-t border-gray-100"
                     >
 
-                      <td className="py-4 px-5 text-gray-700">
+                      <td className="px-6 py-4">
                         {record.date}
                       </td>
 
-                      <td className="py-4 px-5 text-gray-700">
-                        {record.checkIn || '-'}
+                      <td className="px-6 py-4">
+                        {record.checkIn ||
+                          '--'}
                       </td>
 
-                      <td className="py-4 px-5 text-gray-700">
-                        {record.checkOut || '-'}
+                      <td className="px-6 py-4">
+                        {record.checkOut ||
+                          '--'}
                       </td>
 
-                      <td className="py-4 px-5">
+                      <td className="px-6 py-4">
 
-                        <Badge
-                          variant={
-                            record.status === 'Present'
-                              ? 'success'
-                              : record.status === 'Late'
-                              ? 'warning'
-                              : 'danger'
-                          }
-                          dot
-                        >
+                        <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-semibold">
                           {record.status}
-                        </Badge>
+                        </span>
 
                       </td>
 
                     </tr>
-
                   )
                 )}
 
@@ -1383,61 +677,6 @@ function EmployeeAttendanceView({
     </div>
   );
 }
-
-
-// ============================================================
-// INSTRUCTION COMPONENT
-// ============================================================
-
-function Instruction({
-  number,
-  icon,
-  title,
-  text,
-}: {
-  number: string;
-  icon: React.ReactNode;
-  title: string;
-  text: string;
-}) {
-
-  return (
-    <div className="flex gap-4">
-
-      <div className="relative">
-
-        <div className="h-9 w-9 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-semibold text-sm">
-          {number}
-        </div>
-
-      </div>
-
-      <div className="flex-1">
-
-        <div className="flex items-center gap-2">
-
-          <span className="text-indigo-600">
-            {icon}
-          </span>
-
-          <h4 className="font-medium text-gray-900">
-            {title}
-          </h4>
-
-        </div>
-
-        <p className="text-sm text-gray-500 mt-1 leading-5">
-          {text}
-        </p>
-
-      </div>
-
-    </div>
-  );
-}
-
-
-
 
 
 

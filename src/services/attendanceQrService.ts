@@ -1,21 +1,38 @@
-
 // ============================================================
-// ATTENDANCE QR SERVICE
+// STAFFHUB - ATTENDANCE QR SERVICE
 // FRONTEND DEMO / MOCK IMPLEMENTATION
 //
-// This service temporarily stores QR sessions and QR attendance
-// records in localStorage.
+// HR starts ONE attendance session.
+// QR automatically rotates every 10 seconds.
+// QR also rotates immediately after a successful scan.
 //
-// When Spring Boot backend is ready, replace these functions
-// with API calls.
+// IMPORTANT:
+// This currently uses localStorage because the backend is not
+// connected yet. For real multi-device usage, this should later
+// be replaced with Spring Boot + WebSocket/API.
 // ============================================================
 
-export interface AttendanceQrSession {
-  id: string;
+export type AttendanceAction =
+  | 'CHECK_IN'
+  | 'CHECK_OUT';
+
+export type AttendanceEventType =
+  | 'CHECK_IN'
+  | 'CHECK_OUT';
+
+export interface AttendanceQr {
   token: string;
+  sequence: number;
   createdAt: string;
   expiresAt: string;
+}
+
+export interface AttendanceSession {
+  id: string;
+  startedAt: string;
+  startedBy: string;
   active: boolean;
+  currentQr: AttendanceQr | null;
 }
 
 export interface QrAttendanceRecord {
@@ -30,41 +47,111 @@ export interface QrAttendanceRecord {
   createdAt: string;
 }
 
-const SESSION_KEY = 'staffhub_attendance_qr_session';
-const RECORDS_KEY = 'staffhub_qr_attendance_records';
+export interface AttendanceEvent {
+  id: string;
+  sessionId: string;
+  employeeId: string;
+  employeeName: string;
+  action: AttendanceEventType;
+  timestamp: string;
+  time: string;
+  qrSequence: number;
+  recordId: string;
+}
 
-const QR_VALIDITY_SECONDS = 60;
+// ============================================================
+// STORAGE KEYS
+// ============================================================
 
-// ------------------------------------------------------------
-// Helpers
-// ------------------------------------------------------------
+const SESSION_KEY =
+  'staffhub_attendance_session';
+
+const RECORDS_KEY =
+  'staffhub_qr_attendance_records';
+
+const EVENTS_KEY =
+  'staffhub_attendance_events';
+
+// ============================================================
+// SETTINGS
+// ============================================================
+
+export const QR_ROTATION_SECONDS = 10;
+
+// ============================================================
+// STORAGE EVENT HELPER
+// ============================================================
+
+function notifyStorage(key: string): void {
+  window.dispatchEvent(
+    new StorageEvent('storage', {
+      key,
+      newValue: localStorage.getItem(key),
+      storageArea: localStorage,
+    })
+  );
+}
+
+// ============================================================
+// DATE / TIME
+// ============================================================
 
 function getToday(): string {
-  return new Date().toISOString().split('T')[0];
+  const now = new Date();
+
+  const year = now.getFullYear();
+  const month = String(
+    now.getMonth() + 1
+  ).padStart(2, '0');
+
+  const day = String(
+    now.getDate()
+  ).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
 }
 
 function getCurrentTime(): string {
   return new Date().toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
+    second: '2-digit',
     hour12: false,
   });
 }
 
-function generateToken(): string {
-  const randomPart = Math.random()
-    .toString(36)
-    .substring(2, 12)
-    .toUpperCase();
+// ============================================================
+// TOKEN
+// ============================================================
 
-  return `STAFFHUB-${Date.now()}-${randomPart}`;
+function generateToken(): string {
+  const randomPart =
+    Math.random()
+      .toString(36)
+      .substring(2, 12)
+      .toUpperCase();
+
+  return [
+    'STAFFHUB',
+    Date.now(),
+    randomPart,
+  ].join('-');
 }
 
-function readSession(): AttendanceQrSession | null {
-  try {
-    const value = localStorage.getItem(SESSION_KEY);
+// ============================================================
+// STORAGE READERS
+// ============================================================
 
-    if (!value) return null;
+function readSession(): AttendanceSession | null {
+  try {
+    const value =
+      localStorage.getItem(
+        SESSION_KEY
+      );
+
+    if (!value) {
+      return null;
+    }
 
     return JSON.parse(value);
   } catch {
@@ -72,18 +159,27 @@ function readSession(): AttendanceQrSession | null {
   }
 }
 
-function saveSession(session: AttendanceQrSession): void {
+function saveSession(
+  session: AttendanceSession
+): void {
   localStorage.setItem(
     SESSION_KEY,
     JSON.stringify(session)
   );
+
+  notifyStorage(SESSION_KEY);
 }
 
 function readRecords(): QrAttendanceRecord[] {
   try {
-    const value = localStorage.getItem(RECORDS_KEY);
+    const value =
+      localStorage.getItem(
+        RECORDS_KEY
+      );
 
-    if (!value) return [];
+    if (!value) {
+      return [];
+    }
 
     return JSON.parse(value);
   } catch {
@@ -91,28 +187,101 @@ function readRecords(): QrAttendanceRecord[] {
   }
 }
 
-function saveRecords(records: QrAttendanceRecord[]): void {
+function saveRecords(
+  records: QrAttendanceRecord[]
+): void {
   localStorage.setItem(
     RECORDS_KEY,
     JSON.stringify(records)
   );
+
+  notifyStorage(RECORDS_KEY);
 }
 
-// ------------------------------------------------------------
-// QR SESSION
-// ------------------------------------------------------------
+function readEvents(): AttendanceEvent[] {
+  try {
+    const value =
+      localStorage.getItem(
+        EVENTS_KEY
+      );
 
-export function createQrSession(): AttendanceQrSession {
+    if (!value) {
+      return [];
+    }
+
+    return JSON.parse(value);
+  } catch {
+    return [];
+  }
+}
+
+function saveEvents(
+  events: AttendanceEvent[]
+): void {
+  localStorage.setItem(
+    EVENTS_KEY,
+    JSON.stringify(events)
+  );
+
+  notifyStorage(EVENTS_KEY);
+}
+
+// ============================================================
+// CREATE QR
+// ============================================================
+
+function createQr(
+  sequence: number
+): AttendanceQr {
   const now = Date.now();
 
-  const session: AttendanceQrSession = {
-    id: `QR-${now}`,
+  return {
     token: generateToken(),
-    createdAt: new Date(now).toISOString(),
-    expiresAt: new Date(
-      now + QR_VALIDITY_SECONDS * 1000
-    ).toISOString(),
+
+    sequence,
+
+    createdAt:
+      new Date(now).toISOString(),
+
+    expiresAt:
+      new Date(
+        now +
+          QR_ROTATION_SECONDS *
+            1000
+      ).toISOString(),
+  };
+}
+
+// ============================================================
+// START ATTENDANCE SESSION
+// ============================================================
+
+export function startAttendanceSession(
+  startedBy: string
+): AttendanceSession {
+  const existing =
+    readSession();
+
+  if (
+    existing?.active
+  ) {
+    return existing;
+  }
+
+  const now = Date.now();
+
+  const session: AttendanceSession = {
+    id: `SESSION-${now}`,
+
+    startedAt:
+      new Date(now).toISOString(),
+
+    startedBy,
+
     active: true,
+
+    currentQr:
+      createQr(1),
   };
 
   saveSession(session);
@@ -120,81 +289,180 @@ export function createQrSession(): AttendanceQrSession {
   return session;
 }
 
-export function getCurrentQrSession(): AttendanceQrSession | null {
-  const session = readSession();
+// ============================================================
+// STOP ATTENDANCE
+// ============================================================
 
-  if (!session) return null;
+export function stopAttendanceSession(): void {
+  const session =
+    readSession();
+
+  if (!session) {
+    return;
+  }
+
+  saveSession({
+    ...session,
+    active: false,
+    currentQr: null,
+  });
+}
+
+// ============================================================
+// GET SESSION
+// ============================================================
+
+export function getAttendanceSession():
+  AttendanceSession | null {
+  const session =
+    readSession();
+
+  if (!session) {
+    return null;
+  }
+
+  if (!session.active) {
+    return session;
+  }
 
   if (
-    !session.active ||
-    new Date(session.expiresAt).getTime() <= Date.now()
+    session.currentQr &&
+    new Date(
+      session.currentQr.expiresAt
+    ).getTime() <= Date.now()
   ) {
-    const expired = {
-      ...session,
-      active: false,
-    };
-
-    saveSession(expired);
-
-    return expired;
+    return rotateQr('timer');
   }
 
   return session;
 }
 
-export function getRemainingSeconds(): number {
-  const session = getCurrentQrSession();
+// ============================================================
+// IS ACTIVE
+// ============================================================
 
-  if (!session) return 0;
+export function isAttendanceActive(): boolean {
+  const session =
+    getAttendanceSession();
+
+  return Boolean(
+    session?.active
+  );
+}
+
+// ============================================================
+// QR ROTATION
+// ============================================================
+
+export function rotateQr(
+  reason:
+    | 'timer'
+    | 'scan'
+    | 'manual' = 'timer'
+): AttendanceSession | null {
+  const session =
+    readSession();
+
+  if (
+    !session ||
+    !session.active
+  ) {
+    return null;
+  }
+
+  const oldSequence =
+    session.currentQr
+      ?.sequence || 0;
+
+  const nextSequence =
+    oldSequence + 1;
+
+  const updated: AttendanceSession = {
+    ...session,
+
+    currentQr:
+      createQr(nextSequence),
+  };
+
+  saveSession(updated);
+
+  console.log(
+    `Attendance QR rotated: ${reason}`
+  );
+
+  return updated;
+}
+
+// ============================================================
+// REMAINING QR TIME
+// ============================================================
+
+export function getQrRemainingSeconds(): number {
+  const session =
+    getAttendanceSession();
+
+  if (
+    !session?.active ||
+    !session.currentQr
+  ) {
+    return 0;
+  }
 
   const remaining =
-    new Date(session.expiresAt).getTime() -
+    new Date(
+      session.currentQr.expiresAt
+    ).getTime() -
     Date.now();
 
   return Math.max(
     0,
-    Math.ceil(remaining / 1000)
+    Math.ceil(
+      remaining / 1000
+    )
   );
 }
 
-export function deactivateQrSession(): void {
-  const session = readSession();
-
-  if (!session) return;
-
-  saveSession({
-    ...session,
-    active: false,
-  });
-}
+// ============================================================
+// VALIDATE QR
+// ============================================================
 
 export function validateQrToken(
   token: string
-): AttendanceQrSession | null {
-  const session = readSession();
+): AttendanceSession {
+  const session =
+    readSession();
 
-  if (!session) {
-    throw new Error('No active attendance QR code.');
+  if (
+    !session ||
+    !session.active
+  ) {
+    throw new Error(
+      'Attendance is not active.'
+    );
   }
 
-  if (!session.active) {
-    throw new Error('This QR code is no longer active.');
+  if (!session.currentQr) {
+    throw new Error(
+      'No active QR code.'
+    );
   }
 
   if (
-    new Date(session.expiresAt).getTime() <= Date.now()
+    new Date(
+      session.currentQr.expiresAt
+    ).getTime() <= Date.now()
   ) {
-    saveSession({
-      ...session,
-      active: false,
-    });
+    rotateQr('timer');
 
     throw new Error(
       'This QR code has expired. Please scan the new QR code.'
     );
   }
 
-  if (session.token !== token.trim()) {
+  if (
+    session.currentQr.token !==
+    token.trim()
+  ) {
     throw new Error(
       'Invalid attendance QR code.'
     );
@@ -203,23 +471,30 @@ export function validateQrToken(
   return session;
 }
 
-// ------------------------------------------------------------
-// EMPLOYEE ATTENDANCE
-// ------------------------------------------------------------
+// ============================================================
+// EMPLOYEE TODAY RECORD
+// ============================================================
 
 export function getEmployeeTodayRecord(
   employeeId: string
 ): QrAttendanceRecord | null {
-  const records = readRecords();
+  const records =
+    readRecords();
 
   return (
     records.find(
       (record) =>
-        record.employeeId === employeeId &&
-        record.date === getToday()
+        record.employeeId ===
+          employeeId &&
+        record.date ===
+          getToday()
     ) || null
   );
 }
+
+// ============================================================
+// EMPLOYEE HISTORY
+// ============================================================
 
 export function getEmployeeRecords(
   employeeId: string
@@ -227,32 +502,46 @@ export function getEmployeeRecords(
   return readRecords()
     .filter(
       (record) =>
-        record.employeeId === employeeId
+        record.employeeId ===
+        employeeId
     )
     .sort(
       (a, b) =>
-        b.date.localeCompare(a.date)
+        b.date.localeCompare(
+          a.date
+        )
     );
 }
+
+// ============================================================
+// CHECK-IN
+// ============================================================
 
 export function checkInEmployee(
   employeeId: string,
   employeeName: string,
   qrToken: string
-): QrAttendanceRecord {
-  const session = validateQrToken(qrToken);
+): {
+  record: QrAttendanceRecord;
+  event: AttendanceEvent;
+  session: AttendanceSession;
+} {
+  const session =
+    validateQrToken(
+      qrToken
+    );
 
-  if (!session) {
-    throw new Error('Invalid QR session.');
-  }
+  const records =
+    readRecords();
 
-  const records = readRecords();
-
-  const existing = records.find(
-    (record) =>
-      record.employeeId === employeeId &&
-      record.date === getToday()
-  );
+  const existing =
+    records.find(
+      (record) =>
+        record.employeeId ===
+          employeeId &&
+        record.date ===
+          getToday()
+    );
 
   if (existing?.checkIn) {
     throw new Error(
@@ -260,32 +549,45 @@ export function checkInEmployee(
     );
   }
 
-  const currentTime = getCurrentTime();
+  const now =
+    new Date();
 
-  // Simple demo rule:
-  // Before 09:15 = Present
-  // 09:15 or later = Late
-  const now = new Date();
+  const hour =
+    now.getHours();
 
-  const hour = now.getHours();
-  const minute = now.getMinutes();
+  const minute =
+    now.getMinutes();
 
   const status =
     hour > 9 ||
-    (hour === 9 && minute >= 15)
+    (
+      hour === 9 &&
+      minute >= 15
+    )
       ? 'Late'
       : 'Present';
 
   const record: QrAttendanceRecord = {
-    id: `QRA-${Date.now()}`,
+    id: `ATT-${Date.now()}`,
+
     employeeId,
+
     employeeName,
+
     date: getToday(),
-    checkIn: currentTime,
+
+    checkIn:
+      getCurrentTime(),
+
     checkOut: null,
+
     status,
-    qrSessionId: session.id,
-    createdAt: new Date().toISOString(),
+
+    qrSessionId:
+      session.id,
+
+    createdAt:
+      now.toISOString(),
   };
 
   saveRecords([
@@ -293,26 +595,83 @@ export function checkInEmployee(
     record,
   ]);
 
-  return record;
+  const event: AttendanceEvent = {
+    id: `EVENT-${Date.now()}`,
+
+    sessionId:
+      session.id,
+
+    employeeId,
+
+    employeeName,
+
+    action:
+      'CHECK_IN',
+
+    timestamp:
+      now.toISOString(),
+
+    time:
+      getCurrentTime(),
+
+    qrSequence:
+      session.currentQr
+        ?.sequence || 0,
+
+    recordId:
+      record.id,
+  };
+
+  saveEvents([
+    event,
+    ...readEvents(),
+  ]);
+
+  const updatedSession =
+    rotateQr('scan');
+
+  if (!updatedSession) {
+    throw new Error(
+      'Attendance session was stopped.'
+    );
+  }
+
+  return {
+    record,
+    event,
+    session:
+      updatedSession,
+  };
 }
+
+// ============================================================
+// CHECK-OUT
+// ============================================================
 
 export function checkOutEmployee(
   employeeId: string,
   qrToken: string
-): QrAttendanceRecord {
-  const session = validateQrToken(qrToken);
+): {
+  record: QrAttendanceRecord;
+  event: AttendanceEvent;
+  session: AttendanceSession;
+} {
+  const session =
+    validateQrToken(
+      qrToken
+    );
 
-  if (!session) {
-    throw new Error('Invalid QR session.');
-  }
+  const records =
+    readRecords();
 
-  const records = readRecords();
-
-  const index = records.findIndex(
-    (record) =>
-      record.employeeId === employeeId &&
-      record.date === getToday()
-  );
+  const index =
+    records.findIndex(
+      (record) =>
+        record.employeeId ===
+          employeeId &&
+        record.date ===
+          getToday()
+    );
 
   if (index === -1) {
     throw new Error(
@@ -320,40 +679,163 @@ export function checkOutEmployee(
     );
   }
 
-  if (records[index].checkOut) {
+  if (
+    records[index].checkOut
+  ) {
     throw new Error(
       'You have already checked out today.'
     );
   }
 
-  const updated = {
+  const updatedRecord: QrAttendanceRecord = {
     ...records[index],
-    checkOut: getCurrentTime(),
+
+    checkOut:
+      getCurrentTime(),
   };
 
-  records[index] = updated;
+  records[index] =
+    updatedRecord;
 
   saveRecords(records);
 
-  return updated;
+  const now =
+    new Date();
+
+  const event: AttendanceEvent = {
+    id: `EVENT-${Date.now()}`,
+
+    sessionId:
+      session.id,
+
+    employeeId,
+
+    employeeName:
+      updatedRecord.employeeName,
+
+    action:
+      'CHECK_OUT',
+
+    timestamp:
+      now.toISOString(),
+
+    time:
+      getCurrentTime(),
+
+    qrSequence:
+      session.currentQr
+        ?.sequence || 0,
+
+    recordId:
+      updatedRecord.id,
+  };
+
+  saveEvents([
+    event,
+    ...readEvents(),
+  ]);
+
+  const updatedSession =
+    rotateQr('scan');
+
+  if (!updatedSession) {
+    throw new Error(
+      'Attendance session was stopped.'
+    );
+  }
+
+  return {
+    record:
+      updatedRecord,
+
+    event,
+
+    session:
+      updatedSession,
+  };
 }
 
-// ------------------------------------------------------------
-// MANAGEMENT
-// ------------------------------------------------------------
+// ============================================================
+// EVENTS
+// ============================================================
 
-export function getAllQrAttendance(): QrAttendanceRecord[] {
-  return readRecords().sort(
-    (a, b) =>
-      `${b.date}${b.checkIn || ''}`.localeCompare(
-        `${a.date}${a.checkIn || ''}`
-      )
+export function getTodayAttendanceEvents():
+  AttendanceEvent[] {
+  return readEvents()
+    .filter(
+      (event) => {
+        const date =
+          new Date(
+            event.timestamp
+          );
+
+        return (
+          date
+            .toISOString()
+            .split('T')[0] ===
+          getToday()
+        );
+      }
+    )
+    .sort(
+      (a, b) =>
+        new Date(
+          b.timestamp
+        ).getTime() -
+        new Date(
+          a.timestamp
+        ).getTime()
+    );
+}
+
+// ============================================================
+// ALL RECORDS
+// ============================================================
+
+export function getAllQrAttendance():
+  QrAttendanceRecord[] {
+  return readRecords()
+    .sort(
+      (a, b) =>
+        `${b.date}${b.checkIn || ''}`
+          .localeCompare(
+            `${a.date}${a.checkIn || ''}`
+          )
+    );
+}
+
+// ============================================================
+// TODAY RECORDS
+// ============================================================
+
+export function getTodayQrAttendance():
+  QrAttendanceRecord[] {
+  return readRecords()
+    .filter(
+      (record) =>
+        record.date ===
+        getToday()
+    );
+}
+
+// ============================================================
+// DEMO RESET
+// ============================================================
+
+export function clearAttendanceDemoData(): void {
+  localStorage.removeItem(
+    SESSION_KEY
   );
-}
 
-export function getTodayQrAttendance(): QrAttendanceRecord[] {
-  return readRecords().filter(
-    (record) => record.date === getToday()
+  localStorage.removeItem(
+    RECORDS_KEY
   );
-}
 
+  localStorage.removeItem(
+    EVENTS_KEY
+  );
+
+  notifyStorage(SESSION_KEY);
+  notifyStorage(RECORDS_KEY);
+  notifyStorage(EVENTS_KEY);
+}
