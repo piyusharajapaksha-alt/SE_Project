@@ -1,4 +1,309 @@
+import { useEffect, useRef, useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
+
 import {
+  getAttendanceSession,
+  getTodayAttendanceEvents,
+  getQrRemainingSeconds,
+  type AttendanceSession,
+  type AttendanceEvent,
+} from '@/services/attendanceQrService';
+
+export default function AttendanceMonitorPage() {
+  const [session, setSession] =
+    useState<AttendanceSession | null>(null);
+
+  const [remainingSeconds, setRemainingSeconds] =
+    useState(0);
+
+  const [welcomeEvent, setWelcomeEvent] =
+    useState<AttendanceEvent | null>(null);
+
+  const lastEventId = useRef<string | null>(null);
+  const welcomeTimer = useRef<number | null>(null);
+
+  // ==========================================================
+  // LOAD MONITOR DATA
+  // ==========================================================
+
+  const loadMonitor = () => {
+    const currentSession =
+      getAttendanceSession();
+
+    const currentEvents =
+      getTodayAttendanceEvents();
+
+    setSession(currentSession);
+
+    setRemainingSeconds(
+      getQrRemainingSeconds()
+    );
+
+    // --------------------------------------------------------
+    // Detect a NEW employee scan
+    // --------------------------------------------------------
+
+    const latestEvent =
+      currentEvents.length > 0
+        ? currentEvents[0]
+        : null;
+
+    if (
+      latestEvent &&
+      latestEvent.id !== lastEventId.current
+    ) {
+      lastEventId.current =
+        latestEvent.id;
+
+      setWelcomeEvent(
+        latestEvent
+      );
+
+      // Clear welcome message after 4 seconds
+      if (
+        welcomeTimer.current !== null
+      ) {
+        window.clearTimeout(
+          welcomeTimer.current
+        );
+      }
+
+      welcomeTimer.current =
+        window.setTimeout(() => {
+          setWelcomeEvent(null);
+        }, 4000);
+    }
+  };
+
+  // ==========================================================
+  // MONITOR LOOP
+  // ==========================================================
+
+  useEffect(() => {
+    loadMonitor();
+
+    // Check every 500ms.
+    //
+    // This allows:
+    // - QR countdown to stay accurate
+    // - QR to rotate automatically
+    // - New scans to appear quickly
+    const interval =
+      window.setInterval(() => {
+        loadMonitor();
+      }, 500);
+
+    return () => {
+      window.clearInterval(
+        interval
+      );
+
+      if (
+        welcomeTimer.current !== null
+      ) {
+        window.clearTimeout(
+          welcomeTimer.current
+        );
+      }
+    };
+  }, []);
+
+  // ==========================================================
+  // CROSS-TAB / SAME-BROWSER LIVE UPDATE
+  // ==========================================================
+
+  useEffect(() => {
+    const handleStorage = () => {
+      loadMonitor();
+    };
+
+    window.addEventListener(
+      'storage',
+      handleStorage
+    );
+
+    return () => {
+      window.removeEventListener(
+        'storage',
+        handleStorage
+      );
+    };
+  }, []);
+
+  // ==========================================================
+  // FULL SCREEN
+  // ==========================================================
+
+  useEffect(() => {
+    const enableFullscreen =
+      async () => {
+        try {
+          if (
+            !document.fullscreenElement
+          ) {
+            await document.documentElement.requestFullscreen();
+          }
+        } catch {
+          // Browser may block automatic fullscreen.
+          // The monitor still works normally.
+        }
+      };
+
+    // Browsers normally require a user gesture
+    // for fullscreen, so this is best-effort only.
+    enableFullscreen();
+  }, []);
+
+  // ==========================================================
+  // INACTIVE SCREEN
+  // ==========================================================
+
+  if (
+    !session?.active ||
+    !session.currentQr
+  ) {
+    return (
+      <div className="min-h-screen w-full bg-white flex items-center justify-center">
+        <div className="text-center px-6">
+          <div className="text-4xl sm:text-5xl font-black tracking-tight text-gray-900">
+            StaffHub
+          </div>
+
+          <div className="mt-4 text-xl sm:text-2xl font-semibold text-gray-400">
+            Attendance is not active
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================================
+  // WELCOME SCREEN
+  // ==========================================================
+
+  if (welcomeEvent) {
+    const isCheckIn =
+      welcomeEvent.action ===
+      'CHECK_IN';
+
+    return (
+      <div className="min-h-screen w-full bg-white flex items-center justify-center px-6">
+        <div className="text-center">
+          {/* Success icon */}
+
+          <div className="mx-auto w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-green-100 flex items-center justify-center">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              className="w-16 h-16 sm:w-20 sm:h-20 text-green-600"
+              stroke="currentColor"
+              strokeWidth="3"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+          </div>
+
+          {/* Message */}
+
+          <div className="mt-8">
+            <p className="text-2xl sm:text-3xl font-semibold text-gray-500">
+              {isCheckIn
+                ? 'Welcome'
+                : 'Goodbye'}
+            </p>
+
+            <h1 className="mt-2 text-5xl sm:text-7xl font-black tracking-tight text-gray-900">
+              {welcomeEvent.employeeName}
+            </h1>
+
+            <p className="mt-5 text-xl sm:text-2xl font-semibold text-green-600">
+              {isCheckIn
+                ? 'Attendance Recorded'
+                : 'Check-out Recorded'}
+            </p>
+
+            <p className="mt-2 text-lg text-gray-400">
+              {welcomeEvent.time}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================================
+  // MAIN QR SCREEN
+  // ==========================================================
+
+  return (
+    <div className="min-h-screen w-full bg-white flex flex-col items-center justify-center px-6">
+
+      {/* ====================================================
+          STAFFHUB
+          ==================================================== */}
+
+      <div className="text-center">
+        <h1 className="text-4xl sm:text-5xl md:text-6xl font-black tracking-tight text-gray-900">
+          StaffHub
+        </h1>
+
+        <p className="mt-3 text-xl sm:text-2xl md:text-3xl font-semibold text-gray-500">
+          Scan to mark attendance
+        </p>
+      </div>
+
+      {/* ====================================================
+          QR CODE
+          ==================================================== */}
+
+      <div className="mt-8 sm:mt-10 md:mt-12">
+        <div className="bg-white p-5 sm:p-7 md:p-9 rounded-3xl shadow-xl border border-gray-100">
+
+          <QRCodeSVG
+            value={
+              session.currentQr.token
+            }
+            size={
+              typeof window !== 'undefined' &&
+              window.innerWidth < 640
+                ? 260
+                : 360
+            }
+            level="H"
+            includeMargin
+          />
+
+        </div>
+      </div>
+
+      {/* ====================================================
+          COUNTDOWN
+          ==================================================== */}
+
+      <div className="mt-7 text-center">
+
+        <p className="text-base sm:text-lg text-gray-400">
+          QR refreshes automatically
+        </p>
+
+        <p className="mt-1 text-3xl sm:text-4xl font-bold text-gray-900">
+          {remainingSeconds}s
+        </p>
+
+      </div>
+
+    </div>
+  );
+}
+
+
+
+
+/*import {
   useEffect,
   useMemo,
   useState,
@@ -312,9 +617,7 @@ export default function AttendanceMonitorPage() {
         description="Live attendance QR display for employees."
       />
 
-      {/* ======================================================
-          TOP CONTROL BAR
-          ====================================================== */}
+     
 
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
 
@@ -394,9 +697,7 @@ export default function AttendanceMonitorPage() {
 
       </div>
 
-      {/* ======================================================
-          STATS
-          ====================================================== */}
+     
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
@@ -440,13 +741,11 @@ export default function AttendanceMonitorPage() {
 
       </div>
 
-      {/* ======================================================
-          MAIN MONITOR
-          ====================================================== */}
+     
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
 
-        {/* QR DISPLAY */}
+       
 
         <div className="xl:col-span-2 bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
 
@@ -525,7 +824,7 @@ export default function AttendanceMonitorPage() {
 
                 </div>
 
-                {/* COUNTDOWN */}
+              
 
                 <div className="mt-6 text-center">
 
@@ -560,7 +859,7 @@ export default function AttendanceMonitorPage() {
 
         </div>
 
-        {/* LIVE WELCOME */}
+      
 
         <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
 
@@ -660,9 +959,7 @@ export default function AttendanceMonitorPage() {
 
       </div>
 
-      {/* ======================================================
-          RECENT ATTENDANCE
-          ====================================================== */}
+     
 
       <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
 
@@ -768,3 +1065,5 @@ export default function AttendanceMonitorPage() {
     </div>
   );
 }
+
+*/

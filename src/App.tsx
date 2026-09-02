@@ -29,7 +29,7 @@ import {
 
 // Attendance
 import AttendancePage from '@/pages/attendance/AttendancePage';
-
+import AttendanceManagementPage from '@/pages/attendance/AttendanceManagementPage';
 import AttendanceMonitorPage from '@/pages/attendance/AttendanceMonitorPage';
 
 // Leave
@@ -258,11 +258,11 @@ export default function App() {
                 path="/management/attendance"
                 element={
                   <PermissionRoute permission="attendance.view-all">
-                    <AttendancePage />
+                    <AttendanceManagementPage />
                   </PermissionRoute>
                 }
               />
-              
+
               <Route
                 path="/management/attendance/monitor"
                 element={
