@@ -264,12 +264,8 @@ export default function App() {
               />
 
               <Route
-                path="/management/attendance/monitor"
-                element={
-                  <PermissionRoute permission="attendance.view-all">
-                    <AttendanceMonitorPage />
-                  </PermissionRoute>
-                }
+                path="/qrmonitor"
+                element={<AttendanceMonitorPage />}
               />
 
 
