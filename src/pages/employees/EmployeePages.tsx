@@ -32,17 +32,38 @@ export function EmployeeListPage() {
     } catch { } finally { setLoading(false); }
   };
 
-  const handleDelete = async () => {
-    if (!deleteId) return;
-    setDeleting(true);
-    try {
-      await employeeService.delete(deleteId);
-      addToast('success', 'Employee deleted successfully');
-      setDeleteId(null);
-      loadEmployees();
-    } catch { addToast('error', 'Failed to delete employee'); }
-    finally { setDeleting(false); }
-  };
+ const handleDelete = async () => {
+  if (!deleteId) {
+    return;
+  }
+
+  setDeleting(true);
+
+  try {
+    await employeeService.delete(deleteId);
+
+    addToast(
+     'success',
+     'Employee deleted',
+      'Employee has been deleted successfully.',
+    );
+
+    setDeleteId(null);
+
+    await loadEmployees();
+
+  } catch (error) {
+
+    addToast(
+     'error',
+     'Delete failed',
+     'Unable to delete the employee.',
+    );
+
+  } finally {
+    setDeleting(false);
+  }
+};
 
   const paged = employees.slice((currentPage - 1) * perPage, currentPage * perPage);
   const totalPages = Math.ceil(employees.length / perPage);
