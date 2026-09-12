@@ -52,7 +52,7 @@ export function EmployeeListPage() {
   return (
     <div>
       <PageHeader title="Employees" description="Manage employee records and profiles"
-        action={checkPermission('employees.create') ? <button onClick={() => navigate('/employees/create')} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 flex items-center gap-2"><Plus className="h-4 w-4" />Add Employee</button> : undefined} />
+        action={checkPermission('employees.create') ? <button onClick={() => navigate('/management/employees/create')} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 flex items-center gap-2"><Plus className="h-4 w-4" />Add Employee</button> : undefined} />
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="flex-1"><SearchInput value={search} onChange={(v) => { setSearch(v); setCurrentPage(1); }} placeholder="Search by name, email, ID..." /></div>
@@ -92,11 +92,11 @@ export function EmployeeListPage() {
                       <td className="py-3 px-4 text-gray-600 hidden sm:table-cell">{emp.department}</td>
                       <td className="py-3 px-4 text-gray-600 hidden md:table-cell">{emp.position}</td>
                       <td className="py-3 px-4 text-gray-600 hidden lg:table-cell">{emp.role}</td>
-                      <td className="py-3 px-4"><Badge variant={statusBadge(emp.status) as any} dot>{emp.status}</Badge></td>
+                      <td className="py-3 px-4"><Badge variant={statusBadge(emp.employmentStatus) as any} dot> {emp.employmentStatus} </Badge></td>
                       <td className="py-3 px-4">
                         <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => navigate(`/employees/${emp.id}`)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg" title="View"><Eye className="h-4 w-4" /></button>
-                          {checkPermission('employees.edit') && <button onClick={() => navigate(`/employees/${emp.id}/edit`)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg" title="Edit"><Pencil className="h-4 w-4" /></button>}
+                          <button onClick={() => navigate(`/management/employees/${emp.id}`)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg" title="View"><Eye className="h-4 w-4" /></button>
+                          {checkPermission('employees.edit') && <button onClick={() => navigate(`/management/employees/${emp.id}/edit`)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg" title="Edit"><Pencil className="h-4 w-4" /></button>}
                           {checkPermission('employees.delete') && <button onClick={() => setDeleteId(emp.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="h-4 w-4" /></button>}
                         </div>
                       </td>
@@ -148,7 +148,7 @@ export function EmployeeDetailPage() {
 
   return (
     <div>
-      <button onClick={() => navigate('/employees')} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4">
+      <button onClick={() => navigate('/management/employees')} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4">
         <ChevronLeft className="h-4 w-4" /> Back to Employees
       </button>
 
@@ -161,12 +161,12 @@ export function EmployeeDetailPage() {
             <h1 className="text-2xl font-bold text-gray-900">{employee.firstName} {employee.lastName}</h1>
             <p className="text-sm text-gray-500 mt-1">{employee.position} • {employee.department}</p>
             <div className="flex flex-wrap gap-2 mt-3">
-              <Badge variant={employee.status === 'Active' ? 'success' : 'warning'} dot>{employee.status}</Badge>
+              <Badge variant={employee.employmentStatus === 'Active' ? 'success' : 'warning'} dot>{employee.employmentStatus}</Badge>
               <Badge variant="info">{employee.role}</Badge>
               <Badge variant="neutral">{employee.id}</Badge>
             </div>
           </div>
-          <button onClick={() => navigate(`/employees/${employee.id}/edit`)} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 flex items-center gap-2">
+          <button onClick={() => navigate(`/management/employees/${employee.id}/edit`)} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 flex items-center gap-2">
             <Pencil className="h-4 w-4" /> Edit
           </button>
         </div>
@@ -288,7 +288,7 @@ export function EmployeeFormPage() {
 
   return (
     <div>
-      <button onClick={() => navigate('/employees')} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4">
+      <button onClick={() => navigate('/management/employees')} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4">
         <ChevronLeft className="h-4 w-4" /> Back to Employees
       </button>
 
@@ -311,7 +311,7 @@ export function EmployeeFormPage() {
         <FormInput label="Emergency Contact" value={form.emergencyContact} onChange={(e) => setForm({ ...form, emergencyContact: e.target.value })} />
 
         <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-          <button type="button" onClick={() => navigate('/employees')} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+          <button type="button" onClick={() => navigate('/management/employees')} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
           <button type="submit" disabled={saving} className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2">
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
             {isEdit ? 'Update Employee' : 'Create Employee'}
