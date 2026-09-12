@@ -4,7 +4,7 @@
 // WHEN THE BACKEND IS READY, replace each mock implementation
 // with the corresponding API endpoint calls.
 // ============================================================
-
+import { apiRequest } from './apiClient';
 import {
   mockEmployees, mockDepartments, mockAttendance, mockLeaveRequests,
   mockLeaveBalances, mockPerformance, mockTraining, mockEvents,
@@ -33,67 +33,120 @@ function clone<T>(data: T): T {
 //   DELETE /api/employees/:id
 // ============================================================
 
+// ============================================================
+// EMPLOYEE SERVICE
+// Connected to Spring Boot backend
+// ============================================================
 let _employees = clone(mockEmployees);
-
 export const employeeService = {
-  async getAll(filters?: { search?: string; department?: string; status?: string; role?: string }) {
-  
-    let result = clone(_employees);
+
+  // Get all employees
+  async getAll(filters?: {
+    search?: string;
+    department?: string;
+    status?: string;
+    role?: string;
+  }) {
+
+    const employees = await apiRequest<any[]>('/api/employees');
+
+    let result = employees;
+
     if (filters?.search) {
       const s = filters.search.toLowerCase();
+
       result = result.filter((e: any) =>
         `${e.firstName} ${e.lastName}`.toLowerCase().includes(s) ||
-        e.email.toLowerCase().includes(s) ||
-        e.id.toLowerCase().includes(s) ||
-        e.position.toLowerCase().includes(s)
+        e.email?.toLowerCase().includes(s) ||
+        String(e.id).includes(s) ||
+        e.employeeNumber?.toLowerCase().includes(s) ||
+        e.position?.toLowerCase().includes(s)
       );
     }
+
     if (filters?.department && filters.department !== 'All') {
-      result = result.filter((e: any) => e.department === filters.department);
+      result = result.filter(
+        (e: any) => e.department === filters.department
+      );
     }
+
     if (filters?.status && filters.status !== 'All') {
-      result = result.filter((e: any) => e.status === filters.status);
+      result = result.filter(
+        (e: any) =>
+          e.employmentStatus === filters.status ||
+          e.status === filters.status
+      );
     }
+
     if (filters?.role && filters.role !== 'All') {
-      result = result.filter((e: any) => e.role === filters.role);
+      result = result.filter(
+        (e: any) => e.role === filters.role
+      );
     }
+
     return result;
   },
 
+  // Get one employee
   async getById(id: string) {
-    
-    const emp = _employees.find((e: any) => e.id === id);
-    return emp ? clone(emp) : null;
+
+    return await apiRequest<any>(
+      `/api/employees/${id}`
+    );
   },
 
+  // Create employee
   async create(data: any) {
-   
-    const id = `EMP${String(_employees.length + 1).padStart(3, '0')}`;
-    const newEmp = { id, ...data, avatar: null };
-    _employees.push(newEmp);
-    return clone(newEmp);
+
+    return await apiRequest<any>(
+      '/api/employees',
+      {
+        method: 'POST',
+        body: data,
+      }
+    );
   },
 
+  // Update employee
   async update(id: string, data: any) {
-   
-    const idx = _employees.findIndex((e: any) => e.id === id);
-    if (idx === -1) throw new Error('Employee not found');
-    _employees[idx] = { ..._employees[idx], ...data };
-    return clone(_employees[idx]);
+
+    return await apiRequest<any>(
+      `/api/employees/${id}`,
+      {
+        method: 'PUT',
+        body: data,
+      }
+    );
   },
 
+  // Delete employee
   async delete(id: string) {
-   
-    _employees = _employees.filter((e: any) => e.id !== id);
-    return { success: true };
+
+    return await apiRequest<any>(
+      `/api/employees/${id}`,
+      {
+        method: 'DELETE',
+      }
+    );
   },
 
+  // Count employees by department
   async getCountByDepartment() {
-   
+
+    const employees = await apiRequest<any[]>(
+      '/api/employees'
+    );
+
     const counts: Record<string, number> = {};
-    _employees.forEach((e: any) => {
-      counts[e.department] = (counts[e.department] || 0) + 1;
+
+    employees.forEach((employee: any) => {
+
+      const department = employee.department || 'Unknown';
+
+      counts[department] =
+        (counts[department] || 0) + 1;
     });
+
     return counts;
   },
 };
