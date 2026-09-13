@@ -16,7 +16,6 @@ export async function apiRequest<T>(
   endpoint: string,
   options: RequestOptions = {}
 ): Promise<T> {
-
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     method: options.method || 'GET',
     headers: {
@@ -36,12 +35,27 @@ export async function apiRequest<T>(
     );
   }
 
-  // Some DELETE/PUT requests may not return JSON
+  // No content returned
   if (response.status === 204) {
     return undefined as T;
   }
 
-  return response.json();
+  // Read the response as text first.
+  // Backend may return either JSON or plain text.
+  const responseText = await response.text();
+
+  // Empty response
+  if (!responseText) {
+    return undefined as T;
+  }
+
+  // Try JSON first
+  try {
+    return JSON.parse(responseText) as T;
+  } catch {
+    // Backend returned plain text
+    return responseText as T;
+  }
 }
 
 export function getApiUrl(endpoint: string): string {
