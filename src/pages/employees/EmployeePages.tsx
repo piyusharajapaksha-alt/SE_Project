@@ -32,38 +32,38 @@ export function EmployeeListPage() {
     } catch { } finally { setLoading(false); }
   };
 
- const handleDelete = async () => {
-  if (!deleteId) {
-    return;
-  }
+  const handleDelete = async () => {
+    if (!deleteId) {
+      return;
+    }
 
-  setDeleting(true);
+    setDeleting(true);
 
-  try {
-    await employeeService.delete(deleteId);
+    try {
+      await employeeService.delete(deleteId);
 
-    addToast(
-     'success',
-     'Employee deleted',
-      'Employee has been deleted successfully.',
-    );
+      addToast(
+        'success',
+        'Employee deleted',
+        'Employee has been deleted successfully.',
+      );
 
-    setDeleteId(null);
+      setDeleteId(null);
 
-    await loadEmployees();
+      await loadEmployees();
 
-  } catch (error) {
+    } catch (error) {
 
-    addToast(
-     'error',
-     'Delete failed',
-     'Unable to delete the employee.',
-    );
+      addToast(
+        'error',
+        'Delete failed',
+        'Unable to delete the employee.',
+      );
 
-  } finally {
-    setDeleting(false);
-  }
-};
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const paged = employees.slice((currentPage - 1) * perPage, currentPage * perPage);
   const totalPages = Math.ceil(employees.length / perPage);
@@ -136,7 +136,502 @@ export function EmployeeListPage() {
   );
 }
 
-// --- Employee Detail Page ---
+export function EmployeeDetailPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [employee, setEmployee] = useState<any>(null);
+  const [attendance, setAttendance] = useState<any[]>([]);
+  const [leaves, setLeaves] = useState<any[]>([]);
+  const [performance, setPerformance] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (id) loadData(id);
+  }, [id]);
+
+  const loadData = async (empId: string) => {
+    setLoading(true);
+
+
+    try {
+      const emp = await employeeService.getById(empId);
+      setEmployee(emp);
+
+      const att = await attendanceService.getByEmployee(empId);
+      setAttendance(att);
+
+      const lv = await leaveService.getAll({ employeeId: empId });
+      setLeaves(lv);
+
+      const perf = await performanceService.getByEmployee(empId);
+      setPerformance(perf);
+    } catch (error) {
+      console.error('Failed to load employee details:', error);
+    } finally {
+      setLoading(false);
+    }
+
+
+  };
+
+  if (loading) return <LoadingState />;
+
+  if (!employee) {
+    return <EmptyState title="Employee not found" />;
+  }
+
+  const initials = `${employee.firstName?.[0] || ''}${employee.lastName?.[0] || ''}`;
+
+  const formatSalary = (salary: any) => {
+    if (salary === null || salary === undefined || salary === '') {
+      return 'Not provided';
+    }
+
+
+    return `LKR ${Number(salary).toLocaleString('en-LK', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+
+
+  };
+
+  const formatValue = (value: any) => {
+    if (value === null || value === undefined || value === '') {
+      return 'Not provided';
+    }
+
+
+    return String(value);
+
+
+  };
+
+  const formatDate = (date: any) => {
+    if (!date) return 'Not provided';
+
+
+    const parsedDate = new Date(date);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return String(date);
+    }
+
+    return parsedDate.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+
+
+  };
+
+  const statusVariant =
+    employee.employmentStatus === 'Active'
+      ? 'success'
+      : employee.employmentStatus === 'On Leave'
+        ? 'warning'
+        : employee.employmentStatus === 'Probation'
+          ? 'info'
+          : 'danger';
+
+  return (<div>
+    {/* Back Button */}
+    <button
+      onClick={() => navigate('/management/employees')}
+      className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4"
+    > <ChevronLeft className="h-4 w-4" />
+      Back to Employees </button>
+
+    {/* Employee Profile Header */}
+    <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+      <div className="flex flex-col lg:flex-row lg:items-center gap-5">
+        {/* Avatar */}
+        <div className="w-20 h-20 bg-indigo-100 text-indigo-700 rounded-2xl flex items-center justify-center text-2xl font-bold flex-shrink-0">
+          {initials}
+        </div>
+
+        {/* Main Employee Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <h1 className="text-2xl font-bold text-gray-900">
+              {employee.firstName} {employee.lastName}
+            </h1>
+
+            <Badge variant={statusVariant as any} dot>
+              {formatValue(employee.employmentStatus)}
+            </Badge>
+          </div>
+
+          <p className="text-sm text-gray-500 mt-1">
+            {formatValue(employee.position)}
+            {' • '}
+            {formatValue(employee.department)}
+          </p>
+
+          <div className="flex flex-wrap gap-2 mt-3">
+            <Badge variant="info">
+              {formatValue(employee.role)}
+            </Badge>
+
+            <Badge variant="neutral">
+              {formatValue(employee.employeeNumber)}
+            </Badge>
+          </div>
+        </div>
+
+        {/* Edit Button */}
+        <div className="flex-shrink-0">
+          <button
+            onClick={() =>
+              navigate(`/management/employees/${employee.id}/edit`)
+            }
+            className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 flex items-center gap-2"
+          >
+            <Pencil className="h-4 w-4" />
+            Edit
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {/* Employee Information */}
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      {/* Personal Information */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          Personal Information
+        </h3>
+
+        <div className="space-y-4">
+          {/* Gender */}
+          <div className="flex items-start gap-3">
+            <Users className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">Gender</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatValue(employee.gender)}
+              </p>
+            </div>
+          </div>
+
+          {/* Email */}
+          <div className="flex items-start gap-3">
+            <Mail className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500">Email</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5 break-all">
+                {formatValue(employee.email)}
+              </p>
+            </div>
+          </div>
+
+          {/* Phone */}
+          <div className="flex items-start gap-3">
+            <Phone className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">Phone</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatValue(employee.phone)}
+              </p>
+            </div>
+          </div>
+
+          {/* Address */}
+          <div className="flex items-start gap-3">
+            <MapPin className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">Address</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatValue(employee.address)}
+              </p>
+            </div>
+          </div>
+
+          {/* Emergency Contact */}
+          <div className="flex items-start gap-3">
+            <Phone className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">Emergency Contact</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatValue(employee.emergencyContact)}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Employment Information */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          Employment Information
+        </h3>
+
+        <div className="space-y-4">
+          {/* Employee Number */}
+          <div className="flex items-start gap-3">
+            <Briefcase className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">Employee Number</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatValue(employee.employeeNumber)}
+              </p>
+            </div>
+          </div>
+
+          {/* Department */}
+          <div className="flex items-start gap-3">
+            <Briefcase className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">Department</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatValue(employee.department)}
+              </p>
+            </div>
+          </div>
+
+          {/* Position */}
+          <div className="flex items-start gap-3">
+            <Briefcase className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">Position</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatValue(employee.position)}
+              </p>
+            </div>
+          </div>
+
+          {/* Role */}
+          <div className="flex items-start gap-3">
+            <Users className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">System Role</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatValue(employee.role)}
+              </p>
+            </div>
+          </div>
+
+          {/* Employment Status <Briefcase className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+ */}
+          <div className="flex items-start gap-4">
+            <div className="flex items-center gap-2">
+              <span
+                className={`mt-1.5 h-3 w-3 rounded-full ${employee.employmentStatus === "Active"
+                    ? "bg-green-500"
+                    : employee.employmentStatus === "Inactive"
+                      ? "bg-gray-400"
+                      : employee.employmentStatus === "On Leave"
+                        ? "bg-yellow-500"
+                        : "bg-red-500"
+                  }`}
+              />
+            </div>
+
+            <div>
+              <p className="text-xs text-gray-500">Employment Status</p>
+              <p className="mt-0.5 text-sm font-medium text-gray-900">
+                {formatValue(employee.employmentStatus)}
+              </p>
+            </div>
+          </div>
+
+          {/* Hire Date */}
+          <div className="flex items-start gap-3">
+            <CalendarDays className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">Hire Date</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatDate(employee.hireDate)}
+              </p>
+            </div>
+          </div>
+
+          {/* Salary */}
+          <div className="flex items-start gap-3">
+            <Briefcase className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">Salary</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatSalary(employee.salary)}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Recent Attendance */}
+    <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">
+            Recent Attendance
+          </h3>
+          <p className="text-sm text-gray-500 mt-1">
+            Latest attendance records for this employee
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {attendance.slice(0, 5).map((a: any) => (
+          <div
+            key={a.id}
+            className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0"
+          >
+            <div>
+              <p className="text-sm font-medium text-gray-900">
+                {formatDate(a.date)}
+              </p>
+
+              {a.checkIn && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Check-in: {a.checkIn}
+                </p>
+              )}
+            </div>
+
+            <Badge
+              variant={
+                a.status === 'Present'
+                  ? 'success'
+                  : a.status === 'Late'
+                    ? 'warning'
+                    : a.status === 'Absent'
+                      ? 'danger'
+                      : 'info'
+              }
+              dot
+            >
+              {formatValue(a.status)}
+            </Badge>
+          </div>
+        ))}
+
+        {attendance.length === 0 && (
+          <p className="text-sm text-gray-500 py-2">
+            No attendance records.
+          </p>
+        )}
+      </div>
+    </div>
+
+    {/* Leave History */}
+    <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold text-gray-900">
+          Leave History
+        </h3>
+        <p className="text-sm text-gray-500 mt-1">
+          Recent leave requests for this employee
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        {leaves.slice(0, 5).map((l: any) => (
+          <div
+            key={l.id}
+            className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0"
+          >
+            <div>
+              <p className="text-sm font-medium text-gray-900">
+                {formatValue(l.type)}
+              </p>
+
+              <p className="text-xs text-gray-500 mt-1">
+                {formatDate(l.startDate)} - {formatDate(l.endDate)}
+              </p>
+            </div>
+
+            <Badge
+              variant={
+                l.status === 'Approved'
+                  ? 'success'
+                  : l.status === 'Rejected'
+                    ? 'danger'
+                    : 'warning'
+              }
+              dot
+            >
+              {formatValue(l.status)}
+            </Badge>
+          </div>
+        ))}
+
+        {leaves.length === 0 && (
+          <p className="text-sm text-gray-500 py-2">
+            No leave requests.
+          </p>
+        )}
+      </div>
+    </div>
+
+    {/* Performance Reviews */}
+    <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold text-gray-900">
+          Performance Reviews
+        </h3>
+        <p className="text-sm text-gray-500 mt-1">
+          Performance history for this employee
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        {performance.map((p: any) => (
+          <div
+            key={p.id}
+            className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0"
+          >
+            <div>
+              <p className="text-sm font-medium text-gray-900">
+                Review - {formatDate(p.reviewDate)}
+              </p>
+
+              <p className="text-xs text-gray-500 mt-1">
+                Rating: {formatValue(p.rating)}/5
+              </p>
+            </div>
+
+            <Badge
+              variant={
+                p.status === 'Completed'
+                  ? 'success'
+                  : 'warning'
+              }
+            >
+              {formatValue(p.status)}
+            </Badge>
+          </div>
+        ))}
+
+        {performance.length === 0 && (
+          <p className="text-sm text-gray-500 py-2">
+            No performance reviews.
+          </p>
+        )}
+      </div>
+    </div>
+  </div>
+
+
+  );
+}
+
+
+/* --- Employee Detail Page ---
 export function EmployeeDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -194,7 +689,7 @@ export function EmployeeDetailPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Contact Information */}
+        {/* Contact Information 
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Contact Information</h3>
           <div className="space-y-3">
@@ -205,7 +700,7 @@ export function EmployeeDetailPage() {
           </div>
         </div>
 
-        {/* Attendance Summary */}
+        {/* Attendance Summary 
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Attendance</h3>
           <div className="space-y-2">
@@ -219,7 +714,7 @@ export function EmployeeDetailPage() {
           </div>
         </div>
 
-        {/* Leave History */}
+        {/* Leave History 
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Leave History</h3>
           <div className="space-y-2">
@@ -236,7 +731,7 @@ export function EmployeeDetailPage() {
           </div>
         </div>
 
-        {/* Performance */}
+        {/* Performance 
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Performance Reviews</h3>
           <div className="space-y-2">
@@ -255,8 +750,451 @@ export function EmployeeDetailPage() {
       </div>
     </div>
   );
+}*/
+
+// --- Employee Form Page (Create/Edit) ---
+export function EmployeeFormPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const { addToast } = useToast();
+
+  const isEdit = !!id;
+
+  const [loading, setLoading] = useState(isEdit);
+  const [saving, setSaving] = useState(false);
+
+  const [form, setForm] = useState({
+    employeeNumber: '',
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    department: 'Engineering',
+    position: '',
+    role: 'Employee',
+    employmentStatus: 'Active',
+    hireDate: '',
+    address: '',
+    emergencyContact: '',
+    salary: '',
+    gender: 'Male',
+  });
+
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Load employee when editing
+  useEffect(() => {
+    if (!id) {
+      setLoading(false);
+      return;
+    }
+
+    employeeService
+      .getById(id)
+      .then((emp) => {
+
+        if (emp) {
+          setForm({
+            employeeNumber: emp.employeeNumber || '',
+            firstName: emp.firstName || '',
+            lastName: emp.lastName || '',
+            email: emp.email || '',
+            phone: emp.phone || '',
+            department: emp.department || 'Engineering',
+            position: emp.position || '',
+            role: emp.role || 'Employee',
+            employmentStatus: emp.employmentStatus || 'Active',
+            hireDate: emp.hireDate || '',
+            address: emp.address || '',
+            emergencyContact: emp.emergencyContact || '',
+            salary: emp.salary ? String(emp.salary) : '',
+            gender: emp.gender || 'Male',
+          });
+        }
+
+        setLoading(false);
+      })
+      .catch((error) => {
+
+        console.error('Failed to load employee:', error);
+
+        addToast(
+          'error',
+          'Failed to load employee',
+          'Unable to load employee information.'
+        );
+
+        setLoading(false);
+      });
+
+  }, [id]);
+
+  // Validate form
+  const validate = () => {
+
+    const errs: Record<string, string> = {};
+
+    if (!form.employeeNumber.trim()) {
+      errs.employeeNumber = 'Required';
+    }
+
+    if (!form.firstName.trim()) {
+      errs.firstName = 'Required';
+    }
+
+    if (!form.lastName.trim()) {
+      errs.lastName = 'Required';
+    }
+
+    if (!form.email.trim()) {
+      errs.email = 'Required';
+    }
+
+    if (!form.position.trim()) {
+      errs.position = 'Required';
+    }
+
+    if (!form.hireDate) {
+      errs.hireDate = 'Required';
+    }
+
+    setErrors(errs);
+
+    return Object.keys(errs).length === 0;
+  };
+
+  // Create or update employee
+  const handleSubmit = async (e: React.FormEvent) => {
+
+    e.preventDefault();
+
+    if (!validate()) {
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+
+      const employeeData = {
+        employeeNumber: form.employeeNumber,
+        firstName: form.firstName,
+        lastName: form.lastName,
+        email: form.email,
+        phone: form.phone,
+        department: form.department,
+        position: form.position,
+        role: form.role,
+        employmentStatus: form.employmentStatus,
+        hireDate: form.hireDate || null,
+        address: form.address,
+        emergencyContact: form.emergencyContact,
+        salary: form.salary
+          ? Number(form.salary)
+          : null,
+        gender: form.gender,
+      };
+
+      if (isEdit) {
+
+        await employeeService.update(id!, employeeData);
+
+        addToast(
+          'success',
+          'Employee updated',
+          'Employee information has been updated successfully.'
+        );
+
+      } else {
+
+        await employeeService.create(employeeData);
+
+        addToast(
+          'success',
+          'Employee created',
+          'Employee has been created successfully.'
+        );
+      }
+
+      navigate('/management/employees');
+
+    } catch (error) {
+
+      console.error('Employee save error:', error);
+
+      addToast(
+        'error',
+        isEdit ? 'Update failed' : 'Creation failed',
+        isEdit
+          ? 'Unable to update the employee.'
+          : 'Unable to create the employee.'
+      );
+
+    } finally {
+
+      setSaving(false);
+
+    }
+  };
+
+  if (loading) {
+    return <LoadingState />;
+  }
+
+  return (
+    <div>
+
+      <button
+        onClick={() => navigate('/management/employees')}
+        className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4"
+      >
+        <ChevronLeft className="h-4 w-4" />
+        Back to Employees
+      </button>
+
+      <h1 className="text-2xl font-bold text-gray-900 mb-6">
+        {isEdit ? 'Edit Employee' : 'Add New Employee'}
+      </h1>
+
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white rounded-xl border border-gray-200 p-6 space-y-6"
+      >
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          <FormInput
+            label="Employee Number"
+            required
+            value={form.employeeNumber}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                employeeNumber: e.target.value,
+              })
+            }
+            error={errors.employeeNumber}
+            placeholder="EMP001"
+          />
+
+          <FormInput
+            label="First Name"
+            required
+            value={form.firstName}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                firstName: e.target.value,
+              })
+            }
+            error={errors.firstName}
+          />
+
+          <FormInput
+            label="Last Name"
+            required
+            value={form.lastName}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                lastName: e.target.value,
+              })
+            }
+            error={errors.lastName}
+          />
+
+          <FormInput
+            label="Email"
+            type="email"
+            required
+            value={form.email}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                email: e.target.value,
+              })
+            }
+            error={errors.email}
+          />
+
+          <FormInput
+            label="Phone"
+            value={form.phone}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                phone: e.target.value,
+              })
+            }
+          />
+
+          <FormSelect
+            label="Department"
+            value={form.department}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                department: e.target.value,
+              })
+            }
+            options={DEPARTMENTS.map((d) => ({
+              value: d,
+              label: d,
+            }))}
+          />
+
+          <FormInput
+            label="Position"
+            required
+            value={form.position}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                position: e.target.value,
+              })
+            }
+            error={errors.position}
+          />
+
+          <FormSelect
+            label="Role"
+            value={form.role}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                role: e.target.value,
+              })
+            }
+            options={[
+              'Employee',
+              'HR Manager',
+              'Department Manager',
+              'Training Coordinator',
+              'Grievance Officer',
+              'Event Organizer',
+            ].map((r) => ({
+              value: r,
+              label: r,
+            }))}
+          />
+
+          <FormSelect
+            label="Status"
+            value={form.employmentStatus}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                employmentStatus: e.target.value,
+              })
+            }
+            options={EMPLOYEE_STATUSES.map((s) => ({
+              value: s,
+              label: s,
+            }))}
+          />
+
+          <FormSelect
+            label="Gender"
+            value={form.gender}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                gender: e.target.value,
+              })
+            }
+            options={[
+              { value: 'Male', label: 'Male' },
+              { value: 'Female', label: 'Female' },
+              { value: 'Other', label: 'Other' },
+            ]}
+          />
+
+          <FormInput
+            label="Hire Date"
+            type="date"
+            required
+            value={form.hireDate}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                hireDate: e.target.value,
+              })
+            }
+            error={errors.hireDate}
+          />
+
+          <FormInput
+            label="Salary"
+            type="number"
+            value={form.salary}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                salary: e.target.value,
+              })
+            }
+          />
+
+        </div>
+
+        <FormTextarea
+          label="Address"
+          value={form.address}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              address: e.target.value,
+            })
+          }
+          rows={2}
+        />
+
+        <FormInput
+          label="Emergency Contact"
+          value={form.emergencyContact}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              emergencyContact: e.target.value,
+            })
+          }
+        />
+
+        <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+
+          <button
+            type="button"
+            onClick={() => navigate('/management/employees')}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            disabled={saving}
+            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
+          >
+
+            {saving && (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            )}
+
+            {isEdit
+              ? 'Update Employee'
+              : 'Create Employee'}
+
+          </button>
+
+        </div>
+
+      </form>
+    </div>
+  );
 }
 
+
+/*
 // --- Employee Form Page (Create/Edit) ---
 export function EmployeeFormPage() {
   const { id } = useParams();
@@ -342,3 +1280,4 @@ export function EmployeeFormPage() {
     </div>
   );
 }
+*/
