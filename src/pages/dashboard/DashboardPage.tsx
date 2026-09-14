@@ -1,432 +1,869 @@
-import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-//import { dashboardService } from '@/services/dataServices';
-import { StatCard, Badge, LoadingState } from '@/components/ui';
-import { Users, UserCheck, Clock, AlertTriangle, CalendarDays, GraduationCap, Calendar, TrendingUp, MessageSquareWarning, BarChart3 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { StatCard } from '@/components/ui';
+import {
+  Users,
+  UserCheck,
+  Clock,
+  AlertTriangle,
+  CalendarDays,
+  GraduationCap,
+  Calendar,
+  MessageSquareWarning,
+  ClipboardCheck,
+  BarChart3,
+  Bell,
+  BriefcaseBusiness,
+  UserRoundCheck,
+} from 'lucide-react';
 
-const CHART_COLORS = ['#4f46e5', '#06b6d4', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+type DashboardRole =
+  | 'Employee'
+  | 'HR Manager'
+  | 'Department Manager'
+  | 'Training Coordinator'
+  | 'Event Organizer'
+  | 'Grievance Officer';
+
+function EmptyState({
+  icon,
+  title,
+  message,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  message: string;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center py-10 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-gray-400">
+        {icon}
+      </div>
+
+      <h4 className="mt-3 text-sm font-semibold text-gray-700">{title}</h4>
+
+      <p className="mt-1 max-w-sm text-xs text-gray-500">{message}</p>
+    </div>
+  );
+}
+
+function SectionCard({
+  title,
+  icon,
+  children,
+}: {
+  title: string;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5">
+      <div className="mb-4 flex items-center gap-2">
+        {icon && <span className="text-gray-500">{icon}</span>}
+        <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+      </div>
+
+      {children}
+    </div>
+  );
+}
+
+function EmptyList({
+  title,
+  message,
+  icon,
+}: {
+  title: string;
+  message: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <EmptyState
+      icon={icon}
+      title={title}
+      message={message}
+    />
+  );
+}
+
+/* =========================================================
+   MAIN DASHBOARD
+   ========================================================= */
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadDashboard();
-  }, [user]);
+  if (!user) {
+    return (
+      <div className="rounded-xl border border-gray-200 bg-white p-8 text-center">
+        <h2 className="text-lg font-semibold text-gray-900">
+          Unable to load dashboard
+        </h2>
 
-  const loadDashboard = async () => {
-    setLoading(true);
-    try {
-      if (!user) return;
-      // MAIN / Dashboard is always the employee-level dashboard.
-      // A user may have a management role, but that role must not change
-      // the data shown on the common MAIN navigation.
-      //setData(await dashboardService.getEmployeeDashboard(user.employeeId));
-    } catch (err) {
-      console.error('Dashboard error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+        <p className="mt-2 text-sm text-gray-500">
+          Please sign in again to access your dashboard.
+        </p>
+      </div>
+    );
+  }
 
-  if (loading) return <LoadingState message="Loading dashboard..." />;
-  if (!data) return <div>Unable to load dashboard data.</div>;
+  const role = user.role as DashboardRole;
 
-  // MAIN / Dashboard is always the employee-level dashboard.
-  return <EmployeeDashboard data={data} />;
+  switch (role) {
+    case 'HR Manager':
+      return <HRDashboard />;
+
+    case 'Department Manager':
+      return <DepartmentManagerDashboard user={user} />;
+
+    case 'Training Coordinator':
+      return <TrainingCoordinatorDashboard />;
+
+    case 'Event Organizer':
+      return <EventOrganizerDashboard />;
+
+    case 'Grievance Officer':
+      return <GrievanceOfficerDashboard />;
+
+    case 'Employee':
+    default:
+      return <EmployeeDashboard user={user} />;
+  }
 }
 
-// --- Employee Dashboard ---
-function EmployeeDashboard({ data }: { data: any }) {
-  const attSummary = data.attendanceSummary || {};
-  const leaveBal = data.leaveBalance || {};
+/* =========================================================
+   EMPLOYEE DASHBOARD
+   ========================================================= */
+
+function EmployeeDashboard({ user }: { user: any }) {
+  const fullName =
+    `${user.firstName || ''} ${user.lastName || ''}`.trim() ||
+    'Employee';
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">My Dashboard</h1>
-      <p className="text-sm text-gray-500 mb-6">Welcome back! Here's your personal overview.</p>
+      <h1 className="mb-1 text-2xl font-bold text-gray-900">
+        My Dashboard
+      </h1>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Today's Status" value={data.todayAttendance?.status || 'Not Recorded'} icon={<Clock className="h-5 w-5" />} color="blue" />
-        <StatCard title="Present This Month" value={attSummary.present || 0} icon={<UserCheck className="h-5 w-5" />} color="green" />
-        <StatCard title="Late Days" value={attSummary.late || 0} icon={<AlertTriangle className="h-5 w-5" />} color="amber" />
-        <StatCard title="Leave Remaining" value={leaveBal.annualLeave?.remaining || 0} icon={<CalendarDays className="h-5 w-5" />} color="purple" />
+      <p className="mb-6 text-sm text-gray-500">
+        Welcome back, {fullName}. Here's your personal overview.
+      </p>
+
+      {/* Personal statistics */}
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="Today's Attendance"
+          value="—"
+          icon={<Clock className="h-5 w-5" />}
+          color="blue"
+        />
+
+        <StatCard
+          title="Present Days"
+          value="—"
+          icon={<UserCheck className="h-5 w-5" />}
+          color="green"
+        />
+
+        <StatCard
+          title="Late Days"
+          value="—"
+          icon={<AlertTriangle className="h-5 w-5" />}
+          color="amber"
+        />
+
+        <StatCard
+          title="Leave Remaining"
+          value="—"
+          icon={<CalendarDays className="h-5 w-5" />}
+          color="purple"
+        />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Leave Balance */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Leave Balance</h3>
-          <div className="space-y-3">
-            {[
-              { label: 'Annual Leave', ...leaveBal.annualLeave },
-              { label: 'Sick Leave', ...leaveBal.sickLeave },
-              { label: 'Personal Leave', ...leaveBal.personalLeave },
-            ].map((item) => (
-              <div key={item.label}>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-600">{item.label}</span>
-                  <span className="text-gray-900 font-medium">{item.used}/{item.total} used</span>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <SectionCard
+          title="My Leave Balance"
+          icon={<CalendarDays className="h-5 w-5" />}
+        >
+          <div className="space-y-4">
+            {['Annual Leave', 'Sick Leave', 'Personal Leave'].map(
+              (leaveType) => (
+                <div key={leaveType}>
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm text-gray-600">
+                      {leaveType}
+                    </span>
+
+                    <span className="text-sm font-medium text-gray-900">
+                      —
+                    </span>
+                  </div>
+
+                  <div className="h-2 w-full rounded-full bg-gray-100">
+                    <div className="h-2 w-0 rounded-full bg-indigo-500" />
+                  </div>
                 </div>
-                <div className="w-full bg-gray-100 rounded-full h-2">
-                  <div className="bg-indigo-600 rounded-full h-2" style={{ width: `${(item.used / item.total) * 100}%` }} />
-                </div>
-              </div>
-            ))}
+              ),
+            )}
           </div>
-        </div>
 
-        {/* Recent Leave Requests */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Leave Requests</h3>
-          {data.recentLeaveRequests?.length > 0 ? (
-            <div className="space-y-3">
-              {data.recentLeaveRequests.map((req: any) => (
-                <div key={req.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{req.type}</p>
-                    <p className="text-xs text-gray-500">{req.startDate} to {req.endDate}</p>
-                  </div>
-                  <Badge variant={req.status === 'Approved' ? 'success' : req.status === 'Rejected' ? 'danger' : 'warning'} dot>{req.status}</Badge>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500">No leave requests found.</p>
-          )}
-        </div>
+          <p className="mt-4 text-xs text-gray-400">
+            Leave balance will appear here when leave data is available.
+          </p>
+        </SectionCard>
 
-        {/* Upcoming Training */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Upcoming Training</h3>
-          {data.upcomingTraining?.length > 0 ? (
-            <div className="space-y-3">
-              {data.upcomingTraining.map((t: any) => (
-                <div key={t.id} className="flex items-start gap-3 py-2 border-b border-gray-100 last:border-0">
-                  <GraduationCap className="h-5 w-5 text-indigo-500 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{t.title}</p>
-                    <p className="text-xs text-gray-500">{t.startDate} • {t.location}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500">No upcoming training.</p>
-          )}
-        </div>
+        <SectionCard
+          title="Recent Leave Requests"
+          icon={<ClipboardCheck className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<ClipboardCheck className="h-5 w-5" />}
+            title="No leave requests"
+            message="Your recent leave requests will appear here."
+          />
+        </SectionCard>
 
-        {/* Upcoming Events */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Upcoming Events</h3>
-          {data.upcomingEvents?.length > 0 ? (
-            <div className="space-y-3">
-              {data.upcomingEvents.map((e: any) => (
-                <div key={e.id} className="flex items-start gap-3 py-2 border-b border-gray-100 last:border-0">
-                  <Calendar className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{e.title}</p>
-                    <p className="text-xs text-gray-500">{e.date} • {e.location}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-500">No upcoming events.</p>
-          )}
-        </div>
+        <SectionCard
+          title="Upcoming Training"
+          icon={<GraduationCap className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<GraduationCap className="h-5 w-5" />}
+            title="No upcoming training"
+            message="Your registered training programs will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Upcoming Events"
+          icon={<Calendar className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<Calendar className="h-5 w-5" />}
+            title="No upcoming events"
+            message="Events you register for will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Performance"
+          icon={<BarChart3 className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<BarChart3 className="h-5 w-5" />}
+            title="No performance data"
+            message="Your performance information will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Notifications"
+          icon={<Bell className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<Bell className="h-5 w-5" />}
+            title="No new notifications"
+            message="Your latest notifications will appear here."
+          />
+        </SectionCard>
       </div>
     </div>
   );
 }
 
-// --- HR Manager Dashboard ---
-function HRDashboard({ data }: { data: any }) {
+/* =========================================================
+   HR MANAGER DASHBOARD
+   ========================================================= */
+
+function HRDashboard() {
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">HR Dashboard</h1>
-      <p className="text-sm text-gray-500 mb-6">Organization overview and key metrics.</p>
+      <h1 className="mb-1 text-2xl font-bold text-gray-900">
+        HR Dashboard
+      </h1>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-        <StatCard title="Total Employees" value={data.totalEmployees} icon={<Users className="h-5 w-5" />} color="indigo" />
-        <StatCard title="Present Today" value={data.presentToday} icon={<UserCheck className="h-5 w-5" />} color="green" />
-        <StatCard title="Late Today" value={data.lateToday} icon={<Clock className="h-5 w-5" />} color="amber" />
-        <StatCard title="On Leave" value={data.onLeaveToday} icon={<CalendarDays className="h-5 w-5" />} color="purple" />
-        <StatCard title="Pending Leaves" value={data.pendingLeaveRequests} icon={<AlertTriangle className="h-5 w-5" />} color="red" />
+      <p className="mb-6 text-sm text-gray-500">
+        Organization overview and key workforce information.
+      </p>
+
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <StatCard
+          title="Total Employees"
+          value="—"
+          icon={<Users className="h-5 w-5" />}
+          color="indigo"
+        />
+
+        <StatCard
+          title="Present Today"
+          value="—"
+          icon={<UserCheck className="h-5 w-5" />}
+          color="green"
+        />
+
+        <StatCard
+          title="Late Today"
+          value="—"
+          icon={<Clock className="h-5 w-5" />}
+          color="amber"
+        />
+
+        <StatCard
+          title="On Leave"
+          value="—"
+          icon={<CalendarDays className="h-5 w-5" />}
+          color="purple"
+        />
+
+        <StatCard
+          title="Pending Leaves"
+          value="—"
+          icon={<AlertTriangle className="h-5 w-5" />}
+          color="red"
+        />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Attendance Trend Chart */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Attendance Trend</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <BarChart data={data.attendanceTrend}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-              <YAxis tick={{ fontSize: 12 }} />
-              <Tooltip />
-              <Bar dataKey="present" fill="#4f46e5" radius={[2, 2, 0, 0]} name="Present" />
-              <Bar dataKey="late" fill="#f59e0b" radius={[2, 2, 0, 0]} name="Late" />
-              <Bar dataKey="absent" fill="#ef4444" radius={[2, 2, 0, 0]} name="Absent" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <SectionCard
+          title="Attendance Overview"
+          icon={<UserCheck className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<UserCheck className="h-5 w-5" />}
+            title="No attendance data"
+            message="Employee attendance information will appear here."
+          />
+        </SectionCard>
 
-        {/* Leave Distribution Chart */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Leave Distribution</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <PieChart>
-              <Pie data={data.leaveDistribution} cx="50%" cy="50%" innerRadius={60} outerRadius={90} dataKey="value" label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`} labelLine={false}>
-                {data.leaveDistribution.map((_: any, i: number) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+        <SectionCard
+          title="Leave Overview"
+          icon={<CalendarDays className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<CalendarDays className="h-5 w-5" />}
+            title="No leave data"
+            message="Leave requests and statistics will appear here."
+          />
+        </SectionCard>
 
-      {/* Quick Stats Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center gap-3 mb-2">
-            <GraduationCap className="h-5 w-5 text-indigo-500" />
-            <span className="text-sm font-medium text-gray-600">Active Training</span>
-          </div>
-          <p className="text-2xl font-bold text-gray-900">{data.activeTraining}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center gap-3 mb-2">
-            <Calendar className="h-5 w-5 text-blue-500" />
-            <span className="text-sm font-medium text-gray-600">Upcoming Events</span>
-          </div>
-          <p className="text-2xl font-bold text-gray-900">{data.upcomingEvents}</p>
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center gap-3 mb-2">
-            <MessageSquareWarning className="h-5 w-5 text-amber-500" />
-            <span className="text-sm font-medium text-gray-600">Open Grievances</span>
-          </div>
-          <p className="text-2xl font-bold text-gray-900">{data.openGrievances}</p>
-        </div>
-      </div>
+        <SectionCard
+          title="Employee Status"
+          icon={<Users className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<Users className="h-5 w-5" />}
+            title="No employee data"
+            message="Employee status information will appear here."
+          />
+        </SectionCard>
 
-      {/* Recent Activity */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Activity</h3>
-        <div className="space-y-3">
-          {data.recentActivity?.map((a: any) => (
-            <div key={a.id} className="flex items-center gap-3 py-2 border-b border-gray-100 last:border-0">
-              <div className="w-2 h-2 rounded-full bg-indigo-500 flex-shrink-0" />
-              <p className="text-sm text-gray-700 flex-1">{a.message}</p>
-              <span className="text-xs text-gray-400 flex-shrink-0">{a.time}</span>
-            </div>
-          ))}
-        </div>
+        <SectionCard
+          title="Training Overview"
+          icon={<GraduationCap className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<GraduationCap className="h-5 w-5" />}
+            title="No training data"
+            message="Organization training information will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Upcoming Events"
+          icon={<Calendar className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<Calendar className="h-5 w-5" />}
+            title="No upcoming events"
+            message="Upcoming organization events will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="HR Activity"
+          icon={<BriefcaseBusiness className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<BriefcaseBusiness className="h-5 w-5" />}
+            title="No recent activity"
+            message="Recent HR activities will appear here."
+          />
+        </SectionCard>
       </div>
     </div>
   );
 }
 
-// --- Department Manager Dashboard ---
-function DeptManagerDashboard({ data }: { data: any }) {
+/* =========================================================
+   DEPARTMENT MANAGER DASHBOARD
+   ========================================================= */
+
+function DepartmentManagerDashboard({ user }: { user: any }) {
+  const department = user.department || 'Department';
+
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">{data.department} Dashboard</h1>
-      <p className="text-sm text-gray-500 mb-6">Department overview for {data.department}.</p>
+      <h1 className="mb-1 text-2xl font-bold text-gray-900">
+        {department} Dashboard
+      </h1>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Team Members" value={data.totalEmployees} icon={<Users className="h-5 w-5" />} color="indigo" />
-        <StatCard title="Present Today" value={data.presentToday} icon={<UserCheck className="h-5 w-5" />} color="green" />
-        <StatCard title="Late/Absent" value={data.lateToday + data.absentToday} icon={<AlertTriangle className="h-5 w-5" />} color="amber" />
-        <StatCard title="Pending Leaves" value={data.pendingLeaveRequests} icon={<CalendarDays className="h-5 w-5" />} color="red" />
+      <p className="mb-6 text-sm text-gray-500">
+        Department overview and team information.
+      </p>
+
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="Team Members"
+          value="—"
+          icon={<Users className="h-5 w-5" />}
+          color="indigo"
+        />
+
+        <StatCard
+          title="Present Today"
+          value="—"
+          icon={<UserCheck className="h-5 w-5" />}
+          color="green"
+        />
+
+        <StatCard
+          title="Late / Absent"
+          value="—"
+          icon={<AlertTriangle className="h-5 w-5" />}
+          color="amber"
+        />
+
+        <StatCard
+          title="Pending Leaves"
+          value="—"
+          icon={<CalendarDays className="h-5 w-5" />}
+          color="red"
+        />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Pending Leave Requests</h3>
-          {data.pendingLeaveList?.length > 0 ? (
-            <div className="space-y-3">
-              {data.pendingLeaveList.map((l: any) => (
-                <div key={l.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{l.employeeName}</p>
-                    <p className="text-xs text-gray-500">{l.type}: {l.startDate} - {l.endDate}</p>
-                  </div>
-                  <Badge variant="warning" dot>Pending</Badge>
-                </div>
-              ))}
-            </div>
-          ) : <p className="text-sm text-gray-500">No pending requests.</p>}
-        </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <SectionCard
+          title="Team Attendance"
+          icon={<UserCheck className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<UserCheck className="h-5 w-5" />}
+            title="No attendance data"
+            message="Your department's attendance information will appear here."
+          />
+        </SectionCard>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Team Members</h3>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {data.employees?.map((e: any) => (
-              <div key={e.id} className="flex items-center justify-between py-1.5">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-xs font-semibold">
-                    {e.firstName[0]}{e.lastName[0]}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{e.firstName} {e.lastName}</p>
-                    <p className="text-xs text-gray-500">{e.position}</p>
-                  </div>
-                </div>
-                <Badge variant={e.status === 'Active' ? 'success' : 'warning'} dot>{e.status}</Badge>
-              </div>
-            ))}
-          </div>
-        </div>
+        <SectionCard
+          title="Pending Leave Approvals"
+          icon={<ClipboardCheck className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<ClipboardCheck className="h-5 w-5" />}
+            title="No pending requests"
+            message="Leave requests requiring your approval will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Team Members"
+          icon={<Users className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<Users className="h-5 w-5" />}
+            title="No team data"
+            message="Employees in your department will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Team Performance"
+          icon={<BarChart3 className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<BarChart3 className="h-5 w-5" />}
+            title="No performance data"
+            message="Team performance information will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Department Training"
+          icon={<GraduationCap className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<GraduationCap className="h-5 w-5" />}
+            title="No training data"
+            message="Training programs for your department will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Department Activity"
+          icon={<Bell className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<Bell className="h-5 w-5" />}
+            title="No recent activity"
+            message="Recent department activity will appear here."
+          />
+        </SectionCard>
       </div>
     </div>
   );
 }
 
-// --- Training Coordinator Dashboard ---
-function TrainingCoordDashboard({ data }: { data: any }) {
+/* =========================================================
+   TRAINING COORDINATOR DASHBOARD
+   ========================================================= */
+
+function TrainingCoordinatorDashboard() {
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Training Dashboard</h1>
-      <p className="text-sm text-gray-500 mb-6">Manage and monitor training programs.</p>
+      <h1 className="mb-1 text-2xl font-bold text-gray-900">
+        Training Dashboard
+      </h1>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Active Programs" value={data.activeTraining} icon={<GraduationCap className="h-5 w-5" />} color="indigo" />
-        <StatCard title="Completed" value={data.completedTraining} icon={<UserCheck className="h-5 w-5" />} color="green" />
-        <StatCard title="Total Participants" value={data.totalParticipants} icon={<Users className="h-5 w-5" />} color="blue" />
-        <StatCard title="Total Capacity" value={data.totalCapacity} icon={<BarChart3 className="h-5 w-5" />} color="purple" />
+      <p className="mb-6 text-sm text-gray-500">
+        Manage training programs, participants, and training activity.
+      </p>
+
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="Active Programs"
+          value="—"
+          icon={<GraduationCap className="h-5 w-5" />}
+          color="indigo"
+        />
+
+        <StatCard
+          title="Upcoming Programs"
+          value="—"
+          icon={<Calendar className="h-5 w-5" />}
+          color="blue"
+        />
+
+        <StatCard
+          title="Completed Programs"
+          value="—"
+          icon={<UserCheck className="h-5 w-5" />}
+          color="green"
+        />
+
+        <StatCard
+          title="Total Participants"
+          value="—"
+          icon={<Users className="h-5 w-5" />}
+          color="purple"
+        />
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">All Training Programs</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-3 font-medium text-gray-600">Program</th>
-                <th className="text-left py-3 px-3 font-medium text-gray-600">Category</th>
-                <th className="text-left py-3 px-3 font-medium text-gray-600">Start Date</th>
-                <th className="text-left py-3 px-3 font-medium text-gray-600">Enrolled</th>
-                <th className="text-left py-3 px-3 font-medium text-gray-600">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.trainingList?.map((t: any) => (
-                <tr key={t.id} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="py-3 px-3 font-medium text-gray-900">{t.title}</td>
-                  <td className="py-3 px-3 text-gray-600">{t.category}</td>
-                  <td className="py-3 px-3 text-gray-600">{t.startDate}</td>
-                  <td className="py-3 px-3 text-gray-600">{t.registeredCount}/{t.capacity}</td>
-                  <td className="py-3 px-3">
-                    <Badge variant={t.status === 'Upcoming' ? 'info' : 'success'} dot>{t.status}</Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <SectionCard
+          title="Training Programs"
+          icon={<GraduationCap className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<GraduationCap className="h-5 w-5" />}
+            title="No training programs"
+            message="Training programs will appear here when available."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Upcoming Training"
+          icon={<Calendar className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<Calendar className="h-5 w-5" />}
+            title="No upcoming training"
+            message="Upcoming training sessions will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Participant Overview"
+          icon={<Users className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<Users className="h-5 w-5" />}
+            title="No participant data"
+            message="Training participant information will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Training Capacity"
+          icon={<BarChart3 className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<BarChart3 className="h-5 w-5" />}
+            title="No capacity data"
+            message="Training capacity information will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Recent Training Activity"
+          icon={<Bell className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<Bell className="h-5 w-5" />}
+            title="No recent activity"
+            message="Recent training activity will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Training Performance"
+          icon={<BarChart3 className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<BarChart3 className="h-5 w-5" />}
+            title="No performance data"
+            message="Training performance information will appear here."
+          />
+        </SectionCard>
       </div>
     </div>
   );
 }
 
-// --- Event Organizer Dashboard ---
-function EventOrganizerDashboard({ data }: { data: any }) {
+/* =========================================================
+   EVENT ORGANIZER DASHBOARD
+   ========================================================= */
+
+function EventOrganizerDashboard() {
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Events Dashboard</h1>
-      <p className="text-sm text-gray-500 mb-6">Manage and track organizational events.</p>
+      <h1 className="mb-1 text-2xl font-bold text-gray-900">
+        Event Dashboard
+      </h1>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Total Events" value={data.totalEvents} icon={<Calendar className="h-5 w-5" />} color="indigo" />
-        <StatCard title="Upcoming" value={data.upcomingEvents} icon={<CalendarDays className="h-5 w-5" />} color="blue" />
-        <StatCard title="Total Registrations" value={data.totalRegistrations} icon={<Users className="h-5 w-5" />} color="green" />
-        <StatCard title="Total Capacity" value={data.totalCapacity} icon={<BarChart3 className="h-5 w-5" />} color="purple" />
+      <p className="mb-6 text-sm text-gray-500">
+        Manage organization events, registrations, and capacity.
+      </p>
+
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          title="Total Events"
+          value="—"
+          icon={<Calendar className="h-5 w-5" />}
+          color="indigo"
+        />
+
+        <StatCard
+          title="Upcoming Events"
+          value="—"
+          icon={<CalendarDays className="h-5 w-5" />}
+          color="blue"
+        />
+
+        <StatCard
+          title="Registrations"
+          value="—"
+          icon={<UserCheck className="h-5 w-5" />}
+          color="green"
+        />
+
+        <StatCard
+          title="Available Capacity"
+          value="—"
+          icon={<Users className="h-5 w-5" />}
+          color="purple"
+        />
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">All Events</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-3 font-medium text-gray-600">Event</th>
-                <th className="text-left py-3 px-3 font-medium text-gray-600">Date</th>
-                <th className="text-left py-3 px-3 font-medium text-gray-600">Location</th>
-                <th className="text-left py-3 px-3 font-medium text-gray-600">Registered</th>
-                <th className="text-left py-3 px-3 font-medium text-gray-600">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.eventList?.map((e: any) => (
-                <tr key={e.id} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="py-3 px-3 font-medium text-gray-900">{e.title}</td>
-                  <td className="py-3 px-3 text-gray-600">{e.date}</td>
-                  <td className="py-3 px-3 text-gray-600">{e.location}</td>
-                  <td className="py-3 px-3 text-gray-600">{e.registeredCount}/{e.capacity}</td>
-                  <td className="py-3 px-3">
-                    <Badge variant={e.status === 'Upcoming' ? 'info' : e.status === 'Completed' ? 'success' : 'neutral'} dot>{e.status}</Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <SectionCard
+          title="Upcoming Events"
+          icon={<Calendar className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<Calendar className="h-5 w-5" />}
+            title="No upcoming events"
+            message="Upcoming events will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Event Registration"
+          icon={<UserCheck className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<UserCheck className="h-5 w-5" />}
+            title="No registration data"
+            message="Event registration information will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Event Capacity"
+          icon={<Users className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<Users className="h-5 w-5" />}
+            title="No capacity data"
+            message="Event capacity information will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Recent Event Activity"
+          icon={<Bell className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<Bell className="h-5 w-5" />}
+            title="No recent activity"
+            message="Recent event activity will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Event Performance"
+          icon={<BarChart3 className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<BarChart3 className="h-5 w-5" />}
+            title="No performance data"
+            message="Event performance information will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Event Calendar"
+          icon={<CalendarDays className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<CalendarDays className="h-5 w-5" />}
+            title="No scheduled events"
+            message="Your event schedule will appear here."
+          />
+        </SectionCard>
       </div>
     </div>
   );
 }
 
-// --- Grievance Officer Dashboard ---
-function GrievanceOfficerDashboard({ data }: { data: any }) {
+/* =========================================================
+   GRIEVANCE OFFICER DASHBOARD
+   ========================================================= */
+
+function GrievanceOfficerDashboard() {
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Grievance Dashboard</h1>
-      <p className="text-sm text-gray-500 mb-6">Track and resolve employee grievances.</p>
+      <h1 className="mb-1 text-2xl font-bold text-gray-900">
+        Grievance Dashboard
+      </h1>
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
-        <StatCard title="New" value={data.newGrievances} icon={<MessageSquareWarning className="h-5 w-5" />} color="red" />
-        <StatCard title="Under Review" value={data.underReview} icon={<Clock className="h-5 w-5" />} color="amber" />
-        <StatCard title="Assigned" value={data.assigned} icon={<Users className="h-5 w-5" />} color="blue" />
-        <StatCard title="Resolved" value={data.resolved} icon={<UserCheck className="h-5 w-5" />} color="green" />
-        <StatCard title="High Priority" value={data.highPriority} icon={<AlertTriangle className="h-5 w-5" />} color="red" />
+      <p className="mb-6 text-sm text-gray-500">
+        Monitor grievances, priority cases, and resolution activity.
+      </p>
+
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <StatCard
+          title="New Grievances"
+          value="—"
+          icon={<MessageSquareWarning className="h-5 w-5" />}
+          color="indigo"
+        />
+
+        <StatCard
+          title="Under Review"
+          value="—"
+          icon={<Clock className="h-5 w-5" />}
+          color="blue"
+        />
+
+        <StatCard
+          title="Assigned"
+          value="—"
+          icon={<UserRoundCheck className="h-5 w-5" />}
+          color="purple"
+        />
+
+        <StatCard
+          title="Resolved"
+          value="—"
+          icon={<UserCheck className="h-5 w-5" />}
+          color="green"
+        />
+
+        <StatCard
+          title="High Priority"
+          value="—"
+          icon={<AlertTriangle className="h-5 w-5" />}
+          color="red"
+        />
       </div>
 
-      {/* Grievance status chart */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">All Grievances</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-3 px-3 font-medium text-gray-600">ID</th>
-                <th className="text-left py-3 px-3 font-medium text-gray-600">Employee</th>
-                <th className="text-left py-3 px-3 font-medium text-gray-600">Category</th>
-                <th className="text-left py-3 px-3 font-medium text-gray-600">Priority</th>
-                <th className="text-left py-3 px-3 font-medium text-gray-600">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.grievanceList?.map((g: any) => (
-                <tr key={g.id} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="py-3 px-3 font-medium text-gray-900">{g.id}</td>
-                  <td className="py-3 px-3 text-gray-600">{g.employeeName}</td>
-                  <td className="py-3 px-3 text-gray-600">{g.category}</td>
-                  <td className="py-3 px-3">
-                    <Badge variant={g.priority === 'High' || g.priority === 'Critical' ? 'danger' : g.priority === 'Medium' ? 'warning' : 'neutral'}>{g.priority}</Badge>
-                  </td>
-                  <td className="py-3 px-3">
-                    <Badge variant={g.status === 'New' ? 'info' : g.status === 'Resolved' ? 'success' : g.status === 'Under Review' ? 'warning' : 'neutral'} dot>{g.status}</Badge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <SectionCard
+          title="Recent Grievances"
+          icon={<MessageSquareWarning className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<MessageSquareWarning className="h-5 w-5" />}
+            title="No grievances"
+            message="Recent employee grievances will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="High-Priority Cases"
+          icon={<AlertTriangle className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<AlertTriangle className="h-5 w-5" />}
+            title="No high-priority cases"
+            message="High-priority grievance cases will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Grievance Status"
+          icon={<BarChart3 className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<BarChart3 className="h-5 w-5" />}
+            title="No grievance data"
+            message="Grievance status information will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Resolution Activity"
+          icon={<UserCheck className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<UserCheck className="h-5 w-5" />}
+            title="No resolution activity"
+            message="Grievance resolution activity will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Assigned Cases"
+          icon={<UserRoundCheck className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<UserRoundCheck className="h-5 w-5" />}
+            title="No assigned cases"
+            message="Grievances assigned to you will appear here."
+          />
+        </SectionCard>
+
+        <SectionCard
+          title="Recent Activity"
+          icon={<Bell className="h-5 w-5" />}
+        >
+          <EmptyList
+            icon={<Bell className="h-5 w-5" />}
+            title="No recent activity"
+            message="Recent grievance activity will appear here."
+          />
+        </SectionCard>
       </div>
     </div>
   );
 }
+
