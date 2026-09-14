@@ -119,7 +119,7 @@ export default function PerformanceManagementPage({
   editingReview = null,
   onSaved,
 }: PerformanceManagementPageProps) {
-  const { showToast } = useToast();
+  const { addToast  } = useToast();
 
   const [isOpen, setIsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -194,12 +194,12 @@ export default function PerformanceManagementPage({
 
   const validateForm = () => {
     if (!form.employeeId.trim()) {
-      showToast('Employee ID is required.', 'error');
+      addToast ('error','Employee ID is required.' );
       return false;
     }
 
     if (!form.reviewPeriod) {
-      showToast('Review month is required.', 'error');
+      addToast ('error','Review month is required.' );
       return false;
     }
 
@@ -208,10 +208,9 @@ export default function PerformanceManagementPage({
     );
 
     if (missingKpi) {
-      showToast(
-        `Please give a rating for ${missingKpi.label}.`,
-        'error'
-      );
+      addToast ('error',
+        `Please give a rating for ${missingKpi.label}.`
+);
       return false;
     }
 
@@ -250,16 +249,16 @@ export default function PerformanceManagementPage({
           payload
         );
 
-        showToast(
-          'Performance review updated successfully.',
-          'success'
+        addToast ('success',
+          'Performance review updated successfully.'
+          
         );
       } else {
         await performanceService.create(payload);
 
-        showToast(
-          'Performance review created successfully.',
-          'success'
+        addToast ('success',
+          'Performance review created successfully.'
+          
         );
       }
 
@@ -278,7 +277,7 @@ export default function PerformanceManagementPage({
           ? error.message
           : 'Unable to save performance review.';
 
-      showToast(message, 'error');
+      addToast ('error',message );
     } finally {
       setSaving(false);
     }
