@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
-import { grievanceService } from '@/services/grievanceService';
+
+import {
+  grievanceService,
+  type Grievance,
+} from '@/services/grievanceService';
 
 import {
   PageHeader,
@@ -29,37 +34,20 @@ import {
   Eye,
   Loader2,
   Send,
-  RefreshCw,
 } from 'lucide-react';
 
-interface Grievance {
-  id: number;
-  employeeId: string;
-  employeeName?: string;
-  category: string;
-  priority: string;
-  description: string;
-  status: string;
-  createdAt?: string;
-  assignedToName?: string;
-  responses?: {
-    text: string;
-    date?: string;
-  }[];
-}
-
-interface GrievanceFilters {
-  search?: string;
-  status?: string;
-  priority?: string;
-  category?: string;
-  employeeId?: string;
-}
+// ============================================================
+// GRIEVANCES PAGE
+// ============================================================
 
 export default function GrievancesPage() {
   const { user, checkPermission } = useAuth();
   const { addToast } = useToast();
   const location = useLocation();
+
+  // ----------------------------------------------------------
+  // View type
+  // ----------------------------------------------------------
 
   const isManagementView =
     location.pathname.startsWith('/management/');
@@ -70,28 +58,46 @@ export default function GrievancesPage() {
     isManagementView &&
     checkPermission('grievances.manage');
 
+  // ----------------------------------------------------------
+  // Data
+  // ----------------------------------------------------------
+
   const [grievances, setGrievances] = useState<Grievance[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // ----------------------------------------------------------
+  // Filters
+  // ----------------------------------------------------------
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [priorityFilter, setPriorityFilter] = useState('All');
   const [categoryFilter, setCategoryFilter] = useState('All');
 
+  // ----------------------------------------------------------
+  // Pagination
+  // ----------------------------------------------------------
+
   const [currentPage, setCurrentPage] = useState(1);
 
-  const [showForm, setShowForm] = useState(false);
+  const perPage = 10;
+
+  // ----------------------------------------------------------
+  // Modals
+  // ----------------------------------------------------------
+
   const [showDetail, setShowDetail] =
     useState<Grievance | null>(null);
 
-  const [saving, setSaving] = useState(false);
+  const [showForm, setShowForm] =
+    useState(false);
 
   const [showRespond, setShowRespond] =
     useState<Grievance | null>(null);
 
-  const [responseText, setResponseText] = useState('');
-  const [respondLoading, setRespondLoading] =
-    useState(false);
+  // ----------------------------------------------------------
+  // Form
+  // ----------------------------------------------------------
 
   const [form, setForm] = useState({
     category: '',
@@ -102,25 +108,47 @@ export default function GrievancesPage() {
   const [errors, setErrors] =
     useState<Record<string, string>>({});
 
-  const perPage = 10;
+  const [saving, setSaving] =
+    useState(false);
 
-  /*
-   * ---------------------------------------------------------
-   * LOAD GRIEVANCES
-   * ---------------------------------------------------------
-   *
-   * IMPORTANT:
-   * This keeps the original getAll(filters) architecture.
-   *
-   * The page sends filters to grievanceService.
-   * grievanceService will communicate with Spring Boot.
-   */
+  // ----------------------------------------------------------
+  // Response
+  // ----------------------------------------------------------
+
+  const [responseText, setResponseText] =
+    useState('');
+
+  const [respondLoading, setRespondLoading] =
+    useState(false);
+
+  // ==========================================================
+  // Load grievances
+  // ==========================================================
+
+  useEffect(() => {
+    loadData();
+  }, [
+    search,
+    statusFilter,
+    priorityFilter,
+    categoryFilter,
+    user,
+    isManagementView,
+  ]);
+
   const loadData = async () => {
     setLoading(true);
 
     try {
-      const filters: GrievanceFilters = {};
+      const filters: {
+        employeeId?: string;
+        search?: string;
+        status?: string;
+        priority?: string;
+        category?: string;
+      } = {};
 
+      // Employee should only see their own grievances
       if (isEmployeeView && user?.employeeId) {
         filters.employeeId = user.employeeId;
       }
@@ -144,7 +172,19 @@ export default function GrievancesPage() {
       const data =
         await grievanceService.getAll(filters);
 
-      setGrievances(data || []);
+      setGrievances(data);
+
+      // Keep page valid when filters reduce results
+      const calculatedPages =
+        Math.max(
+          1,
+          Math.ceil(data.length / perPage)
+        );
+
+      if (currentPage > calculatedPages) {
+        setCurrentPage(calculatedPages);
+      }
+
     } catch (error) {
       console.error(
         'Failed to load grievances:',
@@ -155,58 +195,43 @@ export default function GrievancesPage() {
 
       addToast(
         'error',
-        'Failed to load grievances',
-        'Unable to retrieve grievance records from the server.'
+        'Failed to load grievances'
       );
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    setCurrentPage(1);
-    loadData();
-  }, [
-    search,
-    statusFilter,
-    priorityFilter,
-    categoryFilter,
-    user?.employeeId,
-    isManagementView,
-  ]);
+  // ==========================================================
+  // Validate submit form
+  // ==========================================================
 
-  /*
-   * ---------------------------------------------------------
-   * SUBMIT VALIDATION
-   * ---------------------------------------------------------
-   */
   const validate = () => {
-    const newErrors: Record<string, string> = {};
+    const nextErrors: Record<string, string> = {};
 
-    if (!form.category) {
-      newErrors.category = 'Category is required';
+    if (!form.category.trim()) {
+      nextErrors.category = 'Category is required';
     }
 
     if (!form.description.trim()) {
-      newErrors.description =
+      nextErrors.description =
         'Description is required';
     } else if (form.description.trim().length < 20) {
-      newErrors.description =
+      nextErrors.description =
         'Please provide more detail (at least 20 characters)';
     }
 
-    setErrors(newErrors);
+    setErrors(nextErrors);
 
-    return Object.keys(newErrors).length === 0;
+    return Object.keys(nextErrors).length === 0;
   };
 
-  /*
-   * ---------------------------------------------------------
-   * SUBMIT GRIEVANCE
-   * ---------------------------------------------------------
-   */
+  // ==========================================================
+  // Submit grievance
+  // ==========================================================
+
   const handleSubmit = async (
-    event: React.FormEvent
+    event: React.FormEvent<HTMLFormElement>
   ) => {
     event.preventDefault();
 
@@ -217,10 +242,8 @@ export default function GrievancesPage() {
     if (!user?.employeeId) {
       addToast(
         'error',
-        'Unable to submit grievance',
-        'Your employee account could not be identified.'
+        'Unable to identify the employee'
       );
-
       return;
     }
 
@@ -249,7 +272,10 @@ export default function GrievancesPage() {
 
       setErrors({});
 
+      setCurrentPage(1);
+
       await loadData();
+
     } catch (error) {
       console.error(
         'Failed to submit grievance:',
@@ -258,29 +284,32 @@ export default function GrievancesPage() {
 
       addToast(
         'error',
-        'Failed to submit grievance',
-        'Please try again.'
+        'Failed to submit grievance'
       );
     } finally {
       setSaving(false);
     }
   };
 
-  /*
-   * ---------------------------------------------------------
-   * VIEW DETAILS
-   * ---------------------------------------------------------
-   */
-  const handleViewDetails = async (
+  // ==========================================================
+  // Open grievance details
+  // ==========================================================
+
+  const handleOpenDetails = async (
     grievance: Grievance
   ) => {
+    if (!grievance.id) {
+      return;
+    }
+
     try {
-      const detail =
+      const details =
         await grievanceService.getById(
           grievance.id
         );
 
-      setShowDetail(detail);
+      setShowDetail(details);
+
     } catch (error) {
       console.error(
         'Failed to load grievance:',
@@ -294,21 +323,30 @@ export default function GrievancesPage() {
     }
   };
 
-  /*
-   * ---------------------------------------------------------
-   * MANAGEMENT RESPONSE
-   * ---------------------------------------------------------
-   *
-   * Kept here so the existing management UI does not
-   * disappear. The backend response endpoint will be
-   * connected through grievanceService.
-   */
+  // ==========================================================
+  // Add management response
+  // ==========================================================
+
   const handleRespond = async () => {
-    if (
-      !showRespond ||
-      !user?.employeeId ||
-      !responseText.trim()
-    ) {
+    if (!showRespond?.id) {
+      return;
+    }
+
+    if (!user?.employeeId) {
+      addToast(
+        'error',
+        'Unable to identify the current user'
+      );
+      return;
+    }
+
+    const text = responseText.trim();
+
+    if (!text) {
+      addToast(
+        'error',
+        'Response cannot be empty'
+      );
       return;
     }
 
@@ -318,8 +356,16 @@ export default function GrievancesPage() {
       await grievanceService.addResponse(
         showRespond.id,
         user.employeeId,
-        responseText.trim()
+        text
       );
+
+      // New grievance becomes Under Review
+      if (showRespond.status === 'New') {
+        await grievanceService.updateStatus(
+          showRespond.id,
+          'Under Review'
+        );
+      }
 
       addToast(
         'success',
@@ -330,6 +376,7 @@ export default function GrievancesPage() {
       setResponseText('');
 
       await loadData();
+
     } catch (error) {
       console.error(
         'Failed to add response:',
@@ -345,24 +392,18 @@ export default function GrievancesPage() {
     }
   };
 
-  /*
-   * ---------------------------------------------------------
-   * STATUS UPDATE
-   * ---------------------------------------------------------
-   */
+  // ==========================================================
+  // Update grievance status
+  // ==========================================================
+
   const handleStatusUpdate = async (
     id: number,
     status: string
   ) => {
-    if (!user?.employeeId) {
-      return;
-    }
-
     try {
       await grievanceService.updateStatus(
         id,
-        status,
-        user.employeeId
+        status
       );
 
       addToast(
@@ -370,6 +411,7 @@ export default function GrievancesPage() {
         `Status updated to ${status}`
       );
 
+      // Refresh detail modal
       if (showDetail?.id === id) {
         const updated =
           await grievanceService.getById(id);
@@ -378,6 +420,7 @@ export default function GrievancesPage() {
       }
 
       await loadData();
+
     } catch (error) {
       console.error(
         'Failed to update status:',
@@ -391,27 +434,30 @@ export default function GrievancesPage() {
     }
   };
 
-  /*
-   * ---------------------------------------------------------
-   * BADGE HELPERS
-   * ---------------------------------------------------------
-   */
-  const priorityBadge = (priority: string) => {
-    if (
-      priority === 'High' ||
-      priority === 'Critical'
-    ) {
-      return 'danger';
-    }
+  // ==========================================================
+  // Badge helpers
+  // ==========================================================
 
-    if (priority === 'Medium') {
-      return 'warning';
-    }
+  const getPriorityBadge = (
+    priority?: string
+  ) => {
+    switch (priority) {
+      case 'High':
+      case 'Critical':
+        return 'danger';
 
-    return 'neutral';
+      case 'Medium':
+        return 'warning';
+
+      case 'Low':
+      default:
+        return 'neutral';
+    }
   };
 
-  const statusBadge = (status: string) => {
+  const getStatusBadge = (
+    status?: string
+  ) => {
     switch (status) {
       case 'New':
         return 'info';
@@ -426,68 +472,70 @@ export default function GrievancesPage() {
         return 'success';
 
       case 'Closed':
-        return 'neutral';
-
       default:
         return 'neutral';
     }
   };
 
-  /*
-   * ---------------------------------------------------------
-   * CLIENT-SIDE PAGINATION
-   * ---------------------------------------------------------
-   */
-  const totalPages = Math.max(
-    1,
-    Math.ceil(grievances.length / perPage)
-  );
+  // ==========================================================
+  // Pagination
+  // ==========================================================
 
-  const pagedGrievances = grievances.slice(
-    (currentPage - 1) * perPage,
-    currentPage * perPage
-  );
+  const startIndex =
+    (currentPage - 1) * perPage;
 
-  /*
-   * ---------------------------------------------------------
-   * RESET FILTERS
-   * ---------------------------------------------------------
-   */
-  const resetFilters = () => {
-    setSearch('');
-    setStatusFilter('All');
-    setPriorityFilter('All');
-    setCategoryFilter('All');
-    setCurrentPage(1);
-  };
+  const endIndex =
+    startIndex + perPage;
+
+  const pagedGrievances =
+    grievances.slice(
+      startIndex,
+      endIndex
+    );
+
+  const totalPages =
+    Math.ceil(
+      grievances.length / perPage
+    );
+
+  // ==========================================================
+  // Render
+  // ==========================================================
 
   return (
-    <div className="space-y-6">
+    <div>
 
-      {/* =====================================================
-          HEADER
+      {/* ======================================================
+          PAGE HEADER
       ====================================================== */}
+
       <PageHeader
         title="Grievances & Feedback"
         description={
           canManage
-            ? 'Review, respond to, and resolve employee grievances'
-            : 'Submit and track your workplace grievances'
+            ? 'Manage and resolve employee grievances'
+            : 'Submit and track your grievances'
         }
         action={
           !canManage ? (
             <button
-              onClick={() => setShowForm(true)}
+              type="button"
+              onClick={() => {
+                setErrors({});
+                setShowForm(true);
+              }}
               className="
-                inline-flex items-center gap-2
-                rounded-lg
+                px-4
+                py-2
                 bg-indigo-600
-                px-4 py-2
-                text-sm font-medium
                 text-white
-                shadow-sm
-                transition
+                text-sm
+                font-medium
+                rounded-lg
                 hover:bg-indigo-700
+                flex
+                items-center
+                gap-2
               "
             >
               <Plus className="h-4 w-4" />
@@ -497,222 +545,352 @@ export default function GrievancesPage() {
         }
       />
 
-      {/* =====================================================
+      {/* ======================================================
           FILTERS
       ====================================================== */}
+
       <div
         className="
-          rounded-xl
-          border border-gray-200
-          bg-white
-          p-4
+          flex
+          flex-col
+          sm:flex-row
+          gap-3
+          mb-4
         "
       >
-        <div className="flex flex-col gap-3 lg:flex-row">
-
-          <div className="flex-1">
-            <SearchInput
-              value={search}
-              onChange={(value) => {
-                setSearch(value);
-                setCurrentPage(1);
-              }}
-              placeholder="Search grievances..."
-            />
-          </div>
-
-          <SelectFilter
-            value={statusFilter}
+        <div className="flex-1">
+          <SearchInput
+            value={search}
             onChange={(value) => {
-              setStatusFilter(value);
+              setSearch(value);
               setCurrentPage(1);
             }}
-            options={GRIEVANCE_STATUSES}
+            placeholder="Search grievances..."
           />
-
-          <SelectFilter
-            value={priorityFilter}
-            onChange={(value) => {
-              setPriorityFilter(value);
-              setCurrentPage(1);
-            }}
-            options={GRIEVANCE_PRIORITIES}
-          />
-
-          <SelectFilter
-            value={categoryFilter}
-            onChange={(value) => {
-              setCategoryFilter(value);
-              setCurrentPage(1);
-            }}
-            options={GRIEVANCE_CATEGORIES}
-          />
-
-          <button
-            type="button"
-            onClick={resetFilters}
-            className="
-              inline-flex items-center
-              justify-center gap-2
-              rounded-lg
-              border border-gray-300
-              bg-white
-              px-3 py-2
-              text-sm font-medium
-              text-gray-700
-              hover:bg-gray-50
-            "
-          >
-            <RefreshCw className="h-4 w-4" />
-            Reset
-          </button>
         </div>
+
+        <SelectFilter
+          value={statusFilter}
+          onChange={(value) => {
+            setStatusFilter(value);
+            setCurrentPage(1);
+          }}
+          options={GRIEVANCE_STATUSES}
+          placeholder="All statuses"
+        />
+
+        <SelectFilter
+          value={priorityFilter}
+          onChange={(value) => {
+            setPriorityFilter(value);
+            setCurrentPage(1);
+          }}
+          options={GRIEVANCE_PRIORITIES}
+          placeholder="All priorities"
+        />
+
+        <SelectFilter
+          value={categoryFilter}
+          onChange={(value) => {
+            setCategoryFilter(value);
+            setCurrentPage(1);
+          }}
+          options={GRIEVANCE_CATEGORIES}
+          placeholder="All categories"
+        />
       </div>
 
-      {/* =====================================================
+      {/* ======================================================
           CONTENT
       ====================================================== */}
+
       {loading ? (
         <LoadingState />
+
       ) : grievances.length === 0 ? (
+
         <EmptyState
           icon={
-            <MessageSquareWarning className="h-6 w-6" />
+            <MessageSquareWarning
+              className="h-6 w-6"
+            />
           }
           title="No grievances found"
+          description={
+            isEmployeeView
+              ? 'You have not submitted any grievances yet.'
+              : 'There are no grievances matching the selected filters.'
+          }
         />
+
       ) : (
+
         <>
+          {/* ==================================================
+              TABLE
+          ================================================== */}
+
           <div
             className="
-              overflow-hidden
-              rounded-xl
-              border border-gray-200
               bg-white
+              rounded-xl
+              border
+              border-gray-200
+              overflow-hidden
             "
           >
             <div className="overflow-x-auto">
+
               <table className="w-full text-sm">
 
                 <thead className="bg-gray-50">
+
                   <tr>
 
-                    <th className="px-4 py-3 text-left font-medium text-gray-600">
+                    <th
+                      className="
+                        text-left
+                        py-3
+                        px-4
+                        font-medium
+                        text-gray-600
+                      "
+                    >
                       ID
                     </th>
 
-                    {canManage && (
-                      <th className="px-4 py-3 text-left font-medium text-gray-600">
+                    {!canManage && (
+                      <th
+                        className="
+                          text-left
+                          py-3
+                          px-4
+                          font-medium
+                          text-gray-600
+                        "
+                      >
                         Employee
                       </th>
                     )}
 
-                    <th className="px-4 py-3 text-left font-medium text-gray-600">
+                    <th
+                      className="
+                        text-left
+                        py-3
+                        px-4
+                        font-medium
+                        text-gray-600
+                      "
+                    >
                       Category
                     </th>
 
-                    <th className="px-4 py-3 text-left font-medium text-gray-600">
+                    <th
+                      className="
+                        text-left
+                        py-3
+                        px-4
+                        font-medium
+                        text-gray-600
+                      "
+                    >
                       Priority
                     </th>
 
-                    <th className="px-4 py-3 text-left font-medium text-gray-600">
+                    <th
+                      className="
+                        text-left
+                        py-3
+                        px-4
+                        font-medium
+                        text-gray-600
+                      "
+                    >
                       Status
                     </th>
 
-                    <th className="hidden px-4 py-3 text-left font-medium text-gray-600 md:table-cell">
+                    <th
+                      className="
+                        text-left
+                        py-3
+                        px-4
+                        font-medium
+                        text-gray-600
+                        hidden
+                        md:table-cell
+                      "
+                    >
                       Date
                     </th>
 
-                    <th className="px-4 py-3 text-right font-medium text-gray-600">
+                    <th
+                      className="
+                        text-right
+                        py-3
+                        px-4
+                        font-medium
+                        text-gray-600
+                      "
+                    >
                       Actions
                     </th>
 
                   </tr>
+
                 </thead>
 
                 <tbody>
 
                   {pagedGrievances.map(
                     (grievance) => (
+
                       <tr
                         key={grievance.id}
                         className="
-                          border-t border-gray-100
-                          transition
+                          border-t
+                          border-gray-100
                           hover:bg-gray-50
                         "
                       >
 
-                        <td className="px-4 py-3 font-medium text-gray-900">
-                          #{grievance.id}
+                        {/* ID */}
+
+                        <td
+                          className="
+                            py-3
+                            px-4
+                            font-medium
+                            text-gray-900
+                          "
+                        >
+                          {grievance.id}
                         </td>
 
-                        {canManage && (
-                          <td className="px-4 py-3 text-gray-600">
+                        {/* Employee */}
+
+                        {!canManage && (
+                          <td
+                            className="
+                              py-3
+                              px-4
+                              text-gray-600
+                            "
+                          >
                             {grievance.employeeName ||
                               grievance.employeeId ||
                               '—'}
                           </td>
                         )}
 
-                        <td className="px-4 py-3 text-gray-600">
+                        {/* Category */}
+
+                        <td
+                          className="
+                            py-3
+                            px-4
+                            text-gray-600
+                          "
+                        >
                           {grievance.category}
                         </td>
 
-                        <td className="px-4 py-3">
+                        {/* Priority */}
+
+                        <td className="py-3 px-4">
+
                           <Badge
                             variant={
-                              priorityBadge(
+                              getPriorityBadge(
                                 grievance.priority
-                              ) as any
+                              ) as
+                                | 'success'
+                                | 'warning'
+                                | 'danger'
+                                | 'info'
+                                | 'neutral'
+                                | 'purple'
                             }
                           >
-                            {grievance.priority}
+                            {grievance.priority ||
+                              'Medium'}
                           </Badge>
+
                         </td>
 
-                        <td className="px-4 py-3">
+                        {/* Status */}
+
+                        <td className="py-3 px-4">
+
                           <Badge
                             variant={
-                              statusBadge(
+                              getStatusBadge(
                                 grievance.status
-                              ) as any
+                              ) as
+                                | 'success'
+                                | 'warning'
+                                | 'danger'
+                                | 'info'
+                                | 'neutral'
+                                | 'purple'
                             }
                             dot
                           >
-                            {grievance.status}
+                            {grievance.status ||
+                              'New'}
                           </Badge>
+
                         </td>
 
-                        <td className="hidden px-4 py-3 text-gray-600 md:table-cell">
-                          {grievance.createdAt
-                            ? new Date(
-                                grievance.createdAt
-                              ).toLocaleDateString()
-                            : '—'}
+                        {/* Date */}
+
+                        <td
+                          className="
+                            py-3
+                            px-4
+                            text-gray-600
+                            hidden
+                            md:table-cell
+                          "
+                        >
+                          {grievance.createdAt ||
+                            '—'}
                         </td>
 
-                        <td className="px-4 py-3">
-                          <div className="flex justify-end">
+                        {/* Actions */}
+
+                        <td className="py-3 px-4">
+
+                          <div
+                            className="
+                              flex
+                              items-center
+                              justify-end
+                              gap-1
+                            "
+                          >
+
+                            {/* View */}
 
                             <button
                               type="button"
                               onClick={() =>
-                                handleViewDetails(
+                                handleOpenDetails(
                                   grievance
                                 )
                               }
                               className="
-                                rounded-lg
-                                p-2
+                                p-1.5
                                 text-gray-400
-                                hover:bg-indigo-50
                                 hover:text-indigo-600
+                                hover:bg-indigo-50
+                                rounded-lg
                               "
                               title="View grievance"
                             >
                               <Eye className="h-4 w-4" />
                             </button>
+
+                            {/* Respond */}
 
                             {canManage && (
                               <button
@@ -724,11 +902,11 @@ export default function GrievancesPage() {
                                   setResponseText('');
                                 }}
                                 className="
-                                  rounded-lg
-                                  p-2
+                                  p-1.5
                                   text-gray-400
-                                  hover:bg-green-50
                                   hover:text-green-600
+                                  hover:bg-green-50
+                                  rounded-lg
                                 "
                                 title="Respond"
                               >
@@ -737,191 +915,295 @@ export default function GrievancesPage() {
                             )}
 
                           </div>
+
                         </td>
 
                       </tr>
+
                     )
                   )}
 
                 </tbody>
+
               </table>
+
             </div>
           </div>
+
+          {/* Pagination */}
 
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
             onPageChange={setCurrentPage}
           />
+
         </>
+
       )}
 
-      {/* =====================================================
+      {/* ======================================================
           DETAIL MODAL
       ====================================================== */}
+
       <Modal
         isOpen={!!showDetail}
         onClose={() => setShowDetail(null)}
-        title={`Grievance #${showDetail?.id || ''}`}
+        title={`Grievance ${
+          showDetail?.id || ''
+        }`}
         size="lg"
       >
-        {showDetail && (
-          <div className="space-y-5">
 
-            <div className="grid grid-cols-1 gap-4 rounded-xl bg-gray-50 p-4 sm:grid-cols-2">
+        {showDetail && (
+
+          <div className="space-y-4">
+
+            {/* Basic information */}
+
+            <div
+              className="
+                grid
+                grid-cols-1
+                sm:grid-cols-2
+                gap-4
+                text-sm
+              "
+            >
 
               <div>
-                <p className="text-xs text-gray-500">
-                  Employee
-                </p>
-
-                <p className="mt-1 text-sm font-medium text-gray-900">
+                <span className="text-gray-500">
+                  Employee:
+                </span>{' '}
+                <span className="font-medium">
                   {showDetail.employeeName ||
                     showDetail.employeeId ||
                     '—'}
-                </p>
+                </span>
               </div>
 
               <div>
-                <p className="text-xs text-gray-500">
-                  Category
-                </p>
-
-                <p className="mt-1 text-sm font-medium text-gray-900">
+                <span className="text-gray-500">
+                  Category:
+                </span>{' '}
+                <span className="font-medium">
                   {showDetail.category}
-                </p>
+                </span>
               </div>
 
               <div>
-                <p className="text-xs text-gray-500">
-                  Priority
-                </p>
+                <span className="text-gray-500">
+                  Priority:
+                </span>{' '}
 
-                <div className="mt-1">
-                  <Badge
-                    variant={
-                      priorityBadge(
-                        showDetail.priority
-                      ) as any
-                    }
-                  >
-                    {showDetail.priority}
-                  </Badge>
-                </div>
+                <Badge
+                  variant={
+                    getPriorityBadge(
+                      showDetail.priority
+                    ) as
+                      | 'success'
+                      | 'warning'
+                      | 'danger'
+                      | 'info'
+                      | 'neutral'
+                      | 'purple'
+                  }
+                >
+                  {showDetail.priority ||
+                    'Medium'}
+                </Badge>
               </div>
 
               <div>
-                <p className="text-xs text-gray-500">
-                  Status
-                </p>
+                <span className="text-gray-500">
+                  Status:
+                </span>{' '}
 
-                <div className="mt-1">
-                  <Badge
-                    variant={
-                      statusBadge(
-                        showDetail.status
-                      ) as any
-                    }
-                    dot
-                  >
-                    {showDetail.status}
-                  </Badge>
-                </div>
+                <Badge
+                  variant={
+                    getStatusBadge(
+                      showDetail.status
+                    ) as
+                      | 'success'
+                      | 'warning'
+                      | 'danger'
+                      | 'info'
+                      | 'neutral'
+                      | 'purple'
+                  }
+                  dot
+                >
+                  {showDetail.status ||
+                    'New'}
+                </Badge>
               </div>
 
               <div>
-                <p className="text-xs text-gray-500">
-                  Assigned To
-                </p>
+                <span className="text-gray-500">
+                  Assigned To:
+                </span>{' '}
 
-                <p className="mt-1 text-sm font-medium text-gray-900">
+                <span className="font-medium">
                   {showDetail.assignedToName ||
                     'Unassigned'}
-                </p>
+                </span>
               </div>
 
               <div>
-                <p className="text-xs text-gray-500">
-                  Created
-                </p>
+                <span className="text-gray-500">
+                  Created:
+                </span>{' '}
 
-                <p className="mt-1 text-sm font-medium text-gray-900">
-                  {showDetail.createdAt
-                    ? new Date(
-                        showDetail.createdAt
-                      ).toLocaleString()
-                    : '—'}
-                </p>
+                <span className="font-medium">
+                  {showDetail.createdAt ||
+                    '—'}
+                </span>
               </div>
 
             </div>
 
+            {/* Description */}
+
             <div>
-              <h4 className="mb-2 text-sm font-semibold text-gray-900">
+
+              <h4
+                className="
+                  text-sm
+                  font-semibold
+                  text-gray-900
+                  mb-2
+                "
+              >
                 Description
               </h4>
 
-              <div className="rounded-xl border border-gray-200 bg-white p-4">
-                <p className="whitespace-pre-wrap text-sm leading-6 text-gray-600">
-                  {showDetail.description}
-                </p>
-              </div>
+              <p
+                className="
+                  text-sm
+                  text-gray-600
+                  bg-gray-50
+                  p-3
+                  rounded-lg
+                  whitespace-pre-wrap
+                "
+              >
+                {showDetail.description}
+              </p>
+
             </div>
 
-            {showDetail.responses &&
+            {/* Responses */}
+
+            {Array.isArray(
+              showDetail.responses
+            ) &&
               showDetail.responses.length > 0 && (
+
                 <div>
-                  <h4 className="mb-3 text-sm font-semibold text-gray-900">
-                    Responses
+
+                  <h4
+                    className="
+                      text-sm
+                      font-semibold
+                      text-gray-900
+                      mb-2
+                    "
+                  >
+                    Responses (
+                    {showDetail.responses.length}
+                    )
                   </h4>
 
                   <div className="space-y-3">
+
                     {showDetail.responses.map(
                       (response, index) => (
+
                         <div
-                          key={index}
+                          key={
+                            response.id ??
+                            index
+                          }
                           className="
-                            rounded-xl
-                            border border-indigo-100
                             bg-indigo-50
-                            p-4
+                            p-3
+                            rounded-lg
                           "
                         >
-                          <p className="text-sm text-gray-700">
+
+                          <p
+                            className="
+                              text-sm
+                              text-gray-700
+                              whitespace-pre-wrap
+                            "
+                          >
                             {response.text}
                           </p>
 
-                          {response.date && (
-                            <p className="mt-2 text-xs text-gray-500">
-                              {response.date}
-                            </p>
-                          )}
+                          <p
+                            className="
+                              text-xs
+                              text-gray-500
+                              mt-1
+                            "
+                          >
+                            {response.employeeName
+                              ? `${response.employeeName} • `
+                              : ''}
+                            {response.date ||
+                              response.createdAt ||
+                              ''}
+                          </p>
+
                         </div>
+
                       )
                     )}
+
                   </div>
+
                 </div>
               )}
 
-            {canManage &&
-              showDetail.status !== 'Resolved' &&
-              showDetail.status !== 'Closed' && (
-                <div className="flex flex-wrap gap-2 border-t border-gray-200 pt-4">
+            {/* Management status buttons */}
 
-                  {showDetail.status === 'New' && (
+            {canManage &&
+              showDetail.status !==
+                'Resolved' &&
+              showDetail.status !==
+                'Closed' && (
+
+                <div
+                  className="
+                    flex
+                    flex-wrap
+                    gap-2
+                    pt-4
+                    border-t
+                    border-gray-200
+                  "
+                >
+
+                  {showDetail.status ===
+                    'New' && (
+
                     <button
+                      type="button"
                       onClick={() =>
                         handleStatusUpdate(
-                          showDetail.id,
+                          showDetail.id!,
                           'Under Review'
                         )
                       }
                       className="
-                        rounded-lg
-                        bg-amber-50
-                        px-3 py-2
-                        text-xs font-medium
+                        px-3
+                        py-1.5
+                        text-xs
+                        font-medium
                         text-amber-700
+                        bg-amber-50
+                        rounded-lg
                         hover:bg-amber-100
                       "
                     >
@@ -931,19 +1213,23 @@ export default function GrievancesPage() {
 
                   {showDetail.status ===
                     'Under Review' && (
+
                     <button
+                      type="button"
                       onClick={() =>
                         handleStatusUpdate(
-                          showDetail.id,
+                          showDetail.id!,
                           'Assigned'
                         )
                       }
                       className="
-                        rounded-lg
-                        bg-blue-50
-                        px-3 py-2
-                        text-xs font-medium
+                        px-3
+                        py-1.5
+                        text-xs
+                        font-medium
                         text-blue-700
+                        bg-blue-50
+                        rounded-lg
                         hover:bg-blue-100
                       "
                     >
@@ -952,18 +1238,21 @@ export default function GrievancesPage() {
                   )}
 
                   <button
+                    type="button"
                     onClick={() =>
                       handleStatusUpdate(
-                        showDetail.id,
+                        showDetail.id!,
                         'Resolved'
                       )
                     }
                     className="
-                      rounded-lg
-                      bg-green-50
-                      px-3 py-2
-                      text-xs font-medium
+                      px-3
+                      py-1.5
+                      text-xs
+                      font-medium
                       text-green-700
+                      bg-green-50
+                      rounded-lg
                       hover:bg-green-100
                     "
                   >
@@ -974,22 +1263,32 @@ export default function GrievancesPage() {
               )}
 
           </div>
+
         )}
+
       </Modal>
 
-      {/* =====================================================
+      {/* ======================================================
           SUBMIT GRIEVANCE MODAL
       ====================================================== */}
+
       <Modal
         isOpen={showForm}
-        onClose={() => setShowForm(false)}
+        onClose={() => {
+          if (!saving) {
+            setShowForm(false);
+          }
+        }}
         title="Submit Grievance"
         size="md"
       >
+
         <form
           onSubmit={handleSubmit}
           className="space-y-4"
         >
+
+          {/* Category */}
 
           <FormSelect
             label="Category"
@@ -998,18 +1297,23 @@ export default function GrievancesPage() {
             onChange={(event) =>
               setForm({
                 ...form,
-                category: event.target.value,
+                category:
+                  event.target.value,
               })
             }
-            options={GRIEVANCE_CATEGORIES.map(
-              (category) => ({
-                value: category,
-                label: category,
-              })
-            )}
+            options={
+              GRIEVANCE_CATEGORIES.map(
+                (category) => ({
+                  value: category,
+                  label: category,
+                })
+              )
+            }
             placeholder="Select category"
             error={errors.category}
           />
+
+          {/* Priority */}
 
           <FormSelect
             label="Priority"
@@ -1017,16 +1321,21 @@ export default function GrievancesPage() {
             onChange={(event) =>
               setForm({
                 ...form,
-                priority: event.target.value,
+                priority:
+                  event.target.value,
               })
             }
-            options={GRIEVANCE_PRIORITIES.map(
-              (priority) => ({
-                value: priority,
-                label: priority,
-              })
-            )}
+            options={
+              GRIEVANCE_PRIORITIES.map(
+                (priority) => ({
+                  value: priority,
+                  label: priority,
+                })
+              )
+            }
           />
+
+          {/* Description */}
 
           <FormTextarea
             label="Description"
@@ -1035,7 +1344,8 @@ export default function GrievancesPage() {
             onChange={(event) =>
               setForm({
                 ...form,
-                description: event.target.value,
+                description:
+                  event.target.value,
               })
             }
             error={errors.description}
@@ -1043,19 +1353,37 @@ export default function GrievancesPage() {
             placeholder="Describe your grievance in detail..."
           />
 
-          <div className="flex justify-end gap-3 border-t border-gray-200 pt-4">
+          {/* Buttons */}
+
+          <div
+            className="
+              flex
+              justify-end
+              gap-3
+              pt-4
+            "
+          >
 
             <button
               type="button"
-              onClick={() => setShowForm(false)}
+              onClick={() => {
+                if (!saving) {
+                  setShowForm(false);
+                }
+              }}
+              disabled={saving}
               className="
-                rounded-lg
-                border border-gray-300
-                bg-white
-                px-4 py-2
-                text-sm font-medium
+                px-4
+                py-2
+                text-sm
+                font-medium
                 text-gray-700
+                bg-white
+                border
+                border-gray-300
+                rounded-lg
                 hover:bg-gray-50
+                disabled:opacity-50
               "
             >
               Cancel
@@ -1065,55 +1393,76 @@ export default function GrievancesPage() {
               type="submit"
               disabled={saving}
               className="
-                inline-flex items-center gap-2
-                rounded-lg
-                bg-indigo-600
-                px-4 py-2
-                text-sm font-medium
+                px-4
+                py-2
+                text-sm
+                font-medium
                 text-white
+                bg-indigo-600
+                rounded-lg
                 hover:bg-indigo-700
-                disabled:cursor-not-allowed
                 disabled:opacity-50
+                flex
+                items-center
+                gap-2
               "
             >
+
               {saving && (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2
+                  className="
+                    h-4
+                    w-4
+                    animate-spin
+                  "
+                />
               )}
 
-              Submit Grievance
+              Submit
+
             </button>
 
           </div>
+
         </form>
+
       </Modal>
 
-      {/* =====================================================
+      {/* ======================================================
           RESPONSE MODAL
       ====================================================== */}
+
       <Modal
         isOpen={!!showRespond}
-        onClose={() => setShowRespond(null)}
-        title="Respond to Grievance"
+        onClose={() => {
+          if (!respondLoading) {
+            setShowRespond(null);
+          }
+        }}
+        title="Add Response"
         size="md"
       >
+
         {showRespond && (
+
           <div className="space-y-4">
 
-            <div className="rounded-xl bg-gray-50 p-4">
-              <p className="text-sm text-gray-600">
-                Responding to grievance
-              </p>
+            <p className="text-sm text-gray-600">
 
-              <p className="mt-1 text-sm font-semibold text-gray-900">
+              Responding to grievance{' '}
+
+              <strong>
                 #{showRespond.id}
-              </p>
+              </strong>
 
-              <p className="mt-2 text-xs text-gray-500">
+              {' '}from{' '}
+
+              <strong>
                 {showRespond.employeeName ||
-                  showRespond.employeeId ||
-                  'Employee'}
-              </p>
-            </div>
+                  showRespond.employeeId}
+              </strong>
+
+            </p>
 
             <FormTextarea
               label="Response"
@@ -1128,21 +1477,34 @@ export default function GrievancesPage() {
               placeholder="Type your response..."
             />
 
-            <div className="flex justify-end gap-3 border-t border-gray-200 pt-4">
+            <div
+              className="
+                flex
+                justify-end
+                gap-3
+              "
+            >
 
               <button
                 type="button"
-                onClick={() =>
-                  setShowRespond(null)
-                }
+                onClick={() => {
+                  if (!respondLoading) {
+                    setShowRespond(null);
+                  }
+                }}
+                disabled={respondLoading}
                 className="
-                  rounded-lg
-                  border border-gray-300
-                  bg-white
-                  px-4 py-2
-                  text-sm font-medium
+                  px-4
+                  py-2
+                  text-sm
+                  font-medium
                   text-gray-700
+                  bg-white
+                  border
+                  border-gray-300
+                  rounded-lg
                   hover:bg-gray-50
+                  disabled:opacity-50
                 "
               >
                 Cancel
@@ -1156,33 +1518,43 @@ export default function GrievancesPage() {
                   respondLoading
                 }
                 className="
-                  inline-flex items-center gap-2
-                  rounded-lg
-                  bg-indigo-600
-                  px-4 py-2
-                  text-sm font-medium
+                  px-4
+                  py-2
+                  text-sm
+                  font-medium
                   text-white
+                  bg-indigo-600
+                  rounded-lg
                   hover:bg-indigo-700
-                  disabled:cursor-not-allowed
                   disabled:opacity-50
+                  flex
+                  items-center
+                  gap-2
                 "
               >
+
                 {respondLoading && (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2
+                    className="
+                      h-4
+                      w-4
+                      animate-spin
+                    "
+                  />
                 )}
 
-                <Send className="h-4 w-4" />
-
                 Send Response
+
               </button>
 
             </div>
 
           </div>
+
         )}
+
       </Modal>
 
     </div>
   );
 }
-

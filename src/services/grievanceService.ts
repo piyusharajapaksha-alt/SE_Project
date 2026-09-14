@@ -1,4 +1,13 @@
+// ============================================================
+// GRIEVANCE SERVICE
+// Handles all grievance communication with Spring Boot backend
+// ============================================================
+
 import { apiRequest } from './apiClient';
+
+// ------------------------------------------------------------
+// Types
+// ------------------------------------------------------------
 
 export interface GrievanceResponse {
   id?: number;
@@ -13,17 +22,13 @@ export interface Grievance {
   id?: number;
   employeeId: string;
   employeeName?: string;
-
   category: string;
   priority: string;
   description: string;
   status?: string;
-
   assignedTo?: string;
   assignedToName?: string;
-
   createdAt?: string;
-
   responses?: GrievanceResponse[];
 }
 
@@ -35,10 +40,11 @@ export interface GrievanceFilters {
   category?: string;
 }
 
-function buildQuery(
-  filters: GrievanceFilters
-): string {
+// ------------------------------------------------------------
+// Build query string
+// ------------------------------------------------------------
 
+function buildQuery(filters: GrievanceFilters = {}): string {
   const params = new URLSearchParams();
 
   if (filters.employeeId) {
@@ -66,7 +72,59 @@ function buildQuery(
   return query ? `?${query}` : '';
 }
 
+// ------------------------------------------------------------
+// Date helper
+// ------------------------------------------------------------
+
+function formatDate(value?: string): string {
+  if (!value) {
+    return '';
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString();
+}
+
+// ------------------------------------------------------------
+// Normalize backend response
+// ------------------------------------------------------------
+
+function normalizeGrievance(
+  grievance: Grievance
+): Grievance {
+  return {
+    ...grievance,
+
+    createdAt: grievance.createdAt
+      ? formatDate(grievance.createdAt)
+      : '',
+
+    responses: Array.isArray(grievance.responses)
+      ? grievance.responses.map((response) => ({
+          ...response,
+
+          date: response.createdAt
+            ? formatDate(response.createdAt)
+            : '',
+        }))
+      : [],
+  };
+}
+
+// ------------------------------------------------------------
+// Grievance API
+// ------------------------------------------------------------
+
 export const grievanceService = {
+
+  // ----------------------------------------------------------
+  // Get all grievances
+  // ----------------------------------------------------------
 
   async getAll(
     filters: GrievanceFilters = {}
@@ -78,12 +136,18 @@ export const grievanceService = {
       `/api/grievances${query}`
     );
 
+    if (!Array.isArray(data)) {
+      return [];
+    }
+
     return data.map(normalizeGrievance);
   },
 
-  async getById(
-    id: number
-  ): Promise<Grievance> {
+  // ----------------------------------------------------------
+  // Get one grievance
+  // ----------------------------------------------------------
+
+  async getById(id: number): Promise<Grievance> {
 
     const data = await apiRequest<Grievance>(
       `/api/grievances/${id}`
@@ -92,14 +156,24 @@ export const grievanceService = {
     return normalizeGrievance(data);
   },
 
+  // ----------------------------------------------------------
+  // Create grievance
+  // ----------------------------------------------------------
+
   async create(
-    grievance: Grievance
+    grievance: {
+      employeeId: string;
+      category: string;
+      priority: string;
+      description: string;
+    }
   ): Promise<number> {
 
     return apiRequest<number>(
       '/api/grievances',
       {
         method: 'POST',
+
         body: {
           employeeId: grievance.employeeId,
           category: grievance.category,
@@ -109,6 +183,10 @@ export const grievanceService = {
       }
     );
   },
+
+  // ----------------------------------------------------------
+  // Add response
+  // ----------------------------------------------------------
 
   async addResponse(
     grievanceId: number,
@@ -120,6 +198,7 @@ export const grievanceService = {
       `/api/grievances/${grievanceId}/responses`,
       {
         method: 'POST',
+
         body: {
           employeeId,
           text,
@@ -128,57 +207,33 @@ export const grievanceService = {
     );
   },
 
+  // ----------------------------------------------------------
+  // Update status
+  //
+  // IMPORTANT:
+  // We intentionally send ONLY the status.
+  //
+  // The current backend uses "updatedBy" as "assignedTo".
+  // Sending employeeId here would accidentally assign the
+  // grievance to the person updating the status.
+  // ----------------------------------------------------------
+
   async updateStatus(
     grievanceId: number,
-    status: string,
-    updatedBy?: string
+    status: string
   ): Promise<string> {
 
     return apiRequest<string>(
       `/api/grievances/${grievanceId}/status`,
       {
         method: 'PUT',
+
         body: {
           status,
-          updatedBy,
         },
       }
     );
   },
 };
 
-function normalizeGrievance(
-  grievance: Grievance
-): Grievance {
-
-  return {
-    ...grievance,
-
-    createdAt: grievance.createdAt
-      ? formatDate(grievance.createdAt)
-      : '',
-
-    responses: (grievance.responses || []).map(
-      (response) => ({
-        ...response,
-
-        date: response.createdAt
-          ? formatDate(response.createdAt)
-          : '',
-      })
-    ),
-  };
-}
-
-function formatDate(
-  value: string
-): string {
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return date.toLocaleString();
-}
+export default grievanceService;
