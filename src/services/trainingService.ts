@@ -71,25 +71,6 @@ interface TrainingApiResponse {
 }
 
 /* =========================================================
-   LOCAL COMPATIBILITY DATA
-   ========================================================= */
-
-/*
- * IMPORTANT:
- *
- * The GET operations are now connected to Spring Boot.
- *
- * These temporary local arrays exist only so the existing
- * TrainingPage UI does not break while CRUD, registration,
- * employee assignment, attendance and completion APIs
- * are developed later.
- */
-
-let localPrograms: TrainingProgram[] = [];
-
-let localEmployees: TrainingEmployee[] = [];
-
-/* =========================================================
    HELPER FUNCTIONS
    ========================================================= */
 
@@ -117,27 +98,25 @@ const mapTrainingProgram = (
     status: program.status ?? 'Upcoming',
 
     /*
-     * These fields are not available from the current
-     * backend GET API yet.
+     * These fields are not available from the
+     * current backend API yet.
      *
-     * They will be connected later.
+     * Keep them empty until backend APIs are added.
      */
     trainingFor: Array.isArray(program.trainingFor)
       ? program.trainingFor
       : [],
 
     assignedEmployeeIds: [],
-
     registeredEmployeeIds: [],
 
     attendance: {},
-
     completion: {},
   };
 };
 
 /**
- * Calculate derived values used by the existing UI.
+ * Calculate values used by the existing UI.
  */
 const enrichProgram = (
   program: TrainingProgram
@@ -165,7 +144,6 @@ const enrichProgram = (
 
   return {
     ...program,
-
     registeredCount,
     assignedCount,
     notRegisteredCount,
@@ -182,15 +160,6 @@ export const trainingService = {
      GET ALL TRAINING PROGRAMS
      ======================================================= */
 
-  /**
-   * Get all training programs from Spring Boot.
-   *
-   * GET /api/training
-   *
-   * Search/category/status filtering is still performed
-   * on the frontend because the backend currently only
-   * provides the basic GET endpoint.
-   */
   async getAll(
     filters?: {
       search?: string;
@@ -199,27 +168,14 @@ export const trainingService = {
     }
   ): Promise<TrainingProgram[]> {
     try {
-      /*
-       * REAL BACKEND REQUEST
-       */
       const response =
         await apiRequest<TrainingApiResponse[]>(
           '/api/training'
         );
 
-      /*
-       * Convert backend response into the structure
-       * expected by TrainingPage.
-       */
       let programs = response.map(
         mapTrainingProgram
       );
-
-      /*
-       * Keep a local copy so the existing UI methods
-       * can continue working temporarily.
-       */
-      localPrograms = programs;
 
       /* -----------------------------------------------
          FRONTEND SEARCH
@@ -295,11 +251,6 @@ export const trainingService = {
      GET TRAINING PROGRAM BY ID
      ======================================================= */
 
-  /**
-   * Get one training program from Spring Boot.
-   *
-   * GET /api/training/{id}
-   */
   async getById(
     id: string | number
   ): Promise<TrainingProgram | null> {
@@ -311,22 +262,6 @@ export const trainingService = {
 
       const program =
         mapTrainingProgram(response);
-
-      /*
-       * Keep local copy updated.
-       */
-      const existingIndex =
-        localPrograms.findIndex(
-          (item) =>
-            String(item.id) === String(id)
-        );
-
-      if (existingIndex >= 0) {
-        localPrograms[existingIndex] =
-          program;
-      } else {
-        localPrograms.push(program);
-      }
 
       return enrichProgram(program);
     } catch (error) {
@@ -340,22 +275,8 @@ export const trainingService = {
   },
 
   /* =======================================================
-     TEMPORARY COMPATIBILITY METHODS
+     CREATE TRAINING PROGRAM
      ======================================================= */
-
-  /*
-   * IMPORTANT:
-   *
-   * The methods below are NOT connected to the backend yet.
-   *
-   * They are kept because TrainingPage.tsx currently calls
-   * them. They will be replaced with real backend APIs
-   * in future milestones.
-   */
-
-  /* -------------------------------------------------------
-     CREATE
-     ------------------------------------------------------- */
 
   async create(
     payload: Omit<
@@ -367,9 +288,7 @@ export const trainingService = {
       | 'completion'
     >
   ): Promise<TrainingProgram> {
-
     try {
-
       const response =
         await apiRequest<TrainingApiResponse>(
           '/api/training',
@@ -393,12 +312,8 @@ export const trainingService = {
       const createdProgram =
         mapTrainingProgram(response);
 
-      localPrograms.push(createdProgram);
-
       return enrichProgram(createdProgram);
-
     } catch (error) {
-
       console.error(
         'Failed to create training program:',
         error
@@ -407,80 +322,68 @@ export const trainingService = {
       throw error;
     }
   },
-  /* -------------------------------------------------------
-     UPDATE
-     ------------------------------------------------------- */
+
+  /* =======================================================
+     UPDATE TRAINING PROGRAM
+     ======================================================= */
 
   async update(
-  id: string,
-  payload: Partial<TrainingProgram>
-): Promise<TrainingProgram> {
+    id: string,
+    payload: Partial<TrainingProgram>
+  ): Promise<TrainingProgram> {
+    try {
+      const response =
+        await apiRequest<TrainingApiResponse>(
+          `/api/training/${id}`,
+          {
+            method: 'PUT',
+            body: {
+              title: payload.title,
+              description: payload.description,
+              trainer: payload.trainer,
+              category: payload.category,
+              startDate: payload.startDate,
+              endDate: payload.endDate || null,
+              location: payload.location,
+              capacity: payload.capacity,
+              trainingFor:
+                payload.trainingFor || [],
+              status: payload.status,
+            },
+          }
+        );
 
-  try {
+      const updatedProgram =
+        mapTrainingProgram(response);
 
-    const response =
-      await apiRequest<TrainingApiResponse>(
-        `/api/training/${id}`,
-        {
-          method: 'PUT',
-          body: {
-            title: payload.title,
-            description: payload.description,
-            trainer: payload.trainer,
-            category: payload.category,
-            startDate: payload.startDate,
-            endDate: payload.endDate || null,
-            location: payload.location,
-            capacity: payload.capacity,
-            trainingFor: payload.trainingFor || [],
-            status: payload.status,
-          },
-        }
+      return enrichProgram(updatedProgram);
+    } catch (error) {
+      console.error(
+        `Failed to update training program ${id}:`,
+        error
       );
 
-    const updatedProgram =
-      mapTrainingProgram(response);
-
-    const index =
-      localPrograms.findIndex(
-        (program) =>
-          String(program.id) === String(id)
-      );
-
-    if (index >= 0) {
-      localPrograms[index] =
-        updatedProgram;
-    } else {
-      localPrograms.push(
-        updatedProgram
-      );
+      throw error;
     }
+  },
 
-    return enrichProgram(
-      updatedProgram
-    );
-
-  } catch (error) {
-
-    console.error(
-      `Failed to update training program ${id}:`,
-      error
-    );
-
-    throw error;
-  }
-},
-
-  /* -------------------------------------------------------
+  /* =======================================================
      DELETE
-     ------------------------------------------------------- */
+     ======================================================= */
 
   async delete(
     id: string
   ): Promise<void> {
-    localPrograms = localPrograms.filter(
-      (program) =>
-        String(program.id) !== String(id)
+    /*
+     * Backend DELETE endpoint has not been implemented yet.
+     *
+     * Do NOT keep local/mock deletion here.
+     *
+     * This method is kept so TrainingPage.tsx
+     * does not produce a TypeScript error.
+     */
+    console.warn(
+      `Training delete API is not implemented yet. ID: ${id}`
     );
   },
 
@@ -488,88 +391,60 @@ export const trainingService = {
      EMPLOYEE METHODS
      ======================================================= */
 
-  async getAllEmployees(): Promise<
-    TrainingEmployee[]
-  > {
-    return localEmployees;
+  /**
+   * Employee assignment API has not been implemented yet.
+   *
+   * Return an empty array instead of using mock/local data.
+   */
+  async getAllEmployees(): Promise<TrainingEmployee[]> {
+    return [];
   },
 
+  /**
+   * Employee assignment API has not been implemented yet.
+   *
+   * Return an empty array instead of using local/mock data.
+   */
   async getEmployees(
-    trainingId: string
+    _trainingId: string
   ): Promise<TrainingEmployee[]> {
-    const program =
-      localPrograms.find(
-        (item) =>
-          String(item.id) ===
-          String(trainingId)
-      );
+    return [];
+  },
 
-    if (!program) {
-      return [];
-    }
+  /* =======================================================
+     ASSIGN EMPLOYEES
+     ======================================================= */
 
-    return localEmployees.filter(
-      (employee) =>
-        program.assignedEmployeeIds.includes(
-          employee.id
-        )
+  async assignEmployees(
+    _trainingId: string,
+    _employeeIds: string[]
+  ): Promise<void> {
+    /*
+     * Backend assignment API is not implemented yet.
+     *
+     * Do nothing for now.
+     */
+    console.warn(
+      'Training employee assignment API is not implemented yet.'
     );
   },
 
-  /* -------------------------------------------------------
-     ASSIGN EMPLOYEES
-     ------------------------------------------------------- */
-
-  async assignEmployees(
-    trainingId: string,
-    employeeIds: string[]
-  ): Promise<void> {
-    const program =
-      localPrograms.find(
-        (item) =>
-          String(item.id) ===
-          String(trainingId)
-      );
-
-    if (!program) {
-      throw new Error(
-        'Training program not found'
-      );
-    }
-
-    program.assignedEmployeeIds = [
-      ...new Set([
-        ...program.assignedEmployeeIds,
-        ...employeeIds,
-      ]),
-    ];
-  },
-
-  /* -------------------------------------------------------
+  /* =======================================================
      REMOVE ASSIGNMENT
-     ------------------------------------------------------- */
+     ======================================================= */
 
   async removeAssignment(
-    trainingId: string,
-    employeeId: string
+    _trainingId: string,
+    _employeeId: string
   ): Promise<void> {
-    const program =
-      localPrograms.find(
-        (item) =>
-          String(item.id) ===
-          String(trainingId)
-      );
-
-    if (!program) {
-      throw new Error(
-        'Training program not found'
-      );
-    }
-
-    program.assignedEmployeeIds =
-      program.assignedEmployeeIds.filter(
-        (id) => id !== employeeId
-      );
+    /*
+     * Backend assignment API is not implemented yet.
+     *
+     * Do nothing for now.
+     */
+    console.warn(
+      'Training employee removal API is not implemented yet.'
+    );
   },
 
   /* =======================================================
@@ -577,57 +452,34 @@ export const trainingService = {
      ======================================================= */
 
   async register(
-    trainingId: string,
-    employeeId: string
+    _trainingId: string,
+    _employeeId: string
   ): Promise<void> {
-    const program =
-      localPrograms.find(
-        (item) =>
-          String(item.id) ===
-          String(trainingId)
-      );
-
-    if (!program) {
-      throw new Error(
-        'Training program not found'
-      );
-    }
-
-    if (
-      !program.registeredEmployeeIds.includes(
-        employeeId
-      )
-    ) {
-      program.registeredEmployeeIds.push(
-        employeeId
-      );
-    }
+    /*
+     * Backend registration API is not implemented yet.
+     *
+     * Do nothing for now.
+     */
+    console.warn(
+      'Training registration API is not implemented yet.'
+    );
   },
 
-  /* -------------------------------------------------------
+  /* =======================================================
      UNREGISTER
-     ------------------------------------------------------- */
+     ======================================================= */
 
   async unregister(
-    trainingId: string,
-    employeeId: string
+    _trainingId: string,
+    _employeeId: string
   ): Promise<void> {
-    const program =
-      localPrograms.find(
-        (item) =>
-          String(item.id) ===
-          String(trainingId)
-      );
-
-    if (!program) {
-      throw new Error(
-        'Training program not found'
-      );
-    }
-
-    program.registeredEmployeeIds =
-      program.registeredEmployeeIds.filter(
-        (id) => id !== employeeId
-      );
+    /*
+     * Backend registration API is not implemented yet.
+     *
+     * Do nothing for now.
+     */
+    console.warn(
+      'Training unregistration API is not implemented yet.'
+    );
   },
 };
