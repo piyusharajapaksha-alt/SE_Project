@@ -59,7 +59,6 @@ import ProfilePage from '@/pages/profile/ProfilePage';
 // Settings
 import SettingsPage from '@/pages/settings/SettingsPage';
 
-import PerformanceManagementPage from '@/pages/performance/PerformanceManagementPage';
 
 
 // ============================================================
@@ -283,7 +282,7 @@ export default function App() {
               />
 
 
-              {/* Performance Management 
+              {/* Performance Management */}
 
               <Route
                 path="/management/performance"
@@ -293,15 +292,8 @@ export default function App() {
                   </PermissionRoute>
                 }
               />
-              */}
-              <Route
-                path="/management/performance"
-                element={
-                  <PermissionRoute permission="performance.view-all">
-                    <PerformanceManagementPage />
-                  </PermissionRoute>
-                }
-              />
+              
+              
 
 
               {/* Training Management */}
