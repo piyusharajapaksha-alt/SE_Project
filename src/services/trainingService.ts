@@ -17,6 +17,7 @@ export interface TrainingEmployee {
   department: string;
   position: string;
   email: string;
+
   assignmentStatus?: 'Assigned' | 'Not Assigned';
   registrationStatus?: 'Registered' | 'Not Registered';
   attendanceStatus?: 'Present' | 'Absent' | 'Pending';
@@ -37,15 +38,14 @@ export interface TrainingProgram {
 
   status: TrainingStatus;
 
-  /*
-   * These fields are kept here so the existing Training UI
-   * does not break.
-   *
-   * They will be connected to backend functionality later.
-   */
   assignedEmployeeIds: string[];
   registeredEmployeeIds: string[];
-  attendance: Record<string, 'Present' | 'Absent' | 'Pending'>;
+
+  attendance: Record<
+    string,
+    'Present' | 'Absent' | 'Pending'
+  >;
+
   completion: Record<
     string,
     'Completed' | 'Not Completed' | 'Pending'
@@ -53,18 +53,9 @@ export interface TrainingProgram {
 }
 
 /* =========================================================
-   BACKEND RESPONSE TYPE
+   BACKEND API RESPONSE
    ========================================================= */
 
-/*
- * This represents the data currently returned by:
- *
- * GET /api/training
- * GET /api/training/{id}
- *
- * Spring Boot/Jackson normally returns Java fields
- * using camelCase.
- */
 interface TrainingApiResponse {
   id: number | string;
   title: string;
@@ -79,12 +70,31 @@ interface TrainingApiResponse {
 }
 
 /* =========================================================
-   HELPER
+   LOCAL COMPATIBILITY DATA
    ========================================================= */
 
 /*
- * Convert backend TrainingProgram data into the format
- * expected by the existing React Training UI.
+ * IMPORTANT:
+ *
+ * The GET operations are now connected to Spring Boot.
+ *
+ * These temporary local arrays exist only so the existing
+ * TrainingPage UI does not break while CRUD, registration,
+ * employee assignment, attendance and completion APIs
+ * are developed later.
+ */
+
+let localPrograms: TrainingProgram[] = [];
+
+let localEmployees: TrainingEmployee[] = [];
+
+/* =========================================================
+   HELPER FUNCTIONS
+   ========================================================= */
+
+/**
+ * Convert backend training data into the structure
+ * expected by the current React Training UI.
  */
 const mapTrainingProgram = (
   program: TrainingApiResponse
@@ -106,40 +116,184 @@ const mapTrainingProgram = (
     status: program.status ?? 'Upcoming',
 
     /*
-     * These are intentionally empty for now.
+     * These fields are not available from the current
+     * backend GET API yet.
      *
-     * Employee assignment, registration,
-     * attendance and completion will be connected
-     * to the backend in later milestones.
+     * They will be connected later.
      */
     trainingFor: [],
+
     assignedEmployeeIds: [],
+
     registeredEmployeeIds: [],
+
     attendance: {},
+
     completion: {},
   };
 };
 
+/**
+ * Calculate derived values used by the existing UI.
+ */
+const enrichProgram = (
+  program: TrainingProgram
+): TrainingProgram & {
+  registeredCount: number;
+  assignedCount: number;
+  notRegisteredCount: number;
+  availableSeats: number;
+} => {
+  const registeredCount =
+    program.registeredEmployeeIds.length;
+
+  const assignedCount =
+    program.assignedEmployeeIds.length;
+
+  const availableSeats = Math.max(
+    0,
+    program.capacity - registeredCount
+  );
+
+  const notRegisteredCount = Math.max(
+    0,
+    program.capacity - registeredCount
+  );
+
+  return {
+    ...program,
+
+    registeredCount,
+    assignedCount,
+    notRegisteredCount,
+    availableSeats,
+  };
+};
+
 /* =========================================================
-   SERVICE
+   TRAINING SERVICE
    ========================================================= */
 
 export const trainingService = {
+  /* =======================================================
+     GET ALL TRAINING PROGRAMS
+     ======================================================= */
+
   /**
    * Get all training programs from Spring Boot.
    *
    * GET /api/training
+   *
+   * Search/category/status filtering is still performed
+   * on the frontend because the backend currently only
+   * provides the basic GET endpoint.
    */
-  async getAll(): Promise<TrainingProgram[]> {
-    const response = await apiRequest<TrainingApiResponse[]>(
-      '/api/training'
-    );
+  async getAll(
+    filters?: {
+      search?: string;
+      category?: string;
+      status?: string;
+    }
+  ): Promise<TrainingProgram[]> {
+    try {
+      /*
+       * REAL BACKEND REQUEST
+       */
+      const response =
+        await apiRequest<TrainingApiResponse[]>(
+          '/api/training'
+        );
 
-    return response.map(mapTrainingProgram);
+      /*
+       * Convert backend response into the structure
+       * expected by TrainingPage.
+       */
+      let programs = response.map(
+        mapTrainingProgram
+      );
+
+      /*
+       * Keep a local copy so the existing UI methods
+       * can continue working temporarily.
+       */
+      localPrograms = programs;
+
+      /* -----------------------------------------------
+         FRONTEND SEARCH
+         ----------------------------------------------- */
+
+      const search =
+        filters?.search?.trim().toLowerCase() || '';
+
+      if (search) {
+        programs = programs.filter((program) => {
+          return (
+            program.title
+              .toLowerCase()
+              .includes(search) ||
+            program.description
+              .toLowerCase()
+              .includes(search) ||
+            program.trainer
+              .toLowerCase()
+              .includes(search) ||
+            program.category
+              .toLowerCase()
+              .includes(search) ||
+            program.location
+              .toLowerCase()
+              .includes(search)
+          );
+        });
+      }
+
+      /* -----------------------------------------------
+         CATEGORY FILTER
+         ----------------------------------------------- */
+
+      if (
+        filters?.category &&
+        filters.category !== 'All'
+      ) {
+        programs = programs.filter(
+          (program) =>
+            program.category ===
+            filters.category
+        );
+      }
+
+      /* -----------------------------------------------
+         STATUS FILTER
+         ----------------------------------------------- */
+
+      if (
+        filters?.status &&
+        filters.status !== 'All'
+      ) {
+        programs = programs.filter(
+          (program) =>
+            program.status ===
+            filters.status
+        );
+      }
+
+      return programs.map(enrichProgram);
+    } catch (error) {
+      console.error(
+        'Failed to load training programs:',
+        error
+      );
+
+      throw error;
+    }
   },
 
+  /* =======================================================
+     GET TRAINING PROGRAM BY ID
+     ======================================================= */
+
   /**
-   * Get one training program by ID.
+   * Get one training program from Spring Boot.
    *
    * GET /api/training/{id}
    */
@@ -147,11 +301,31 @@ export const trainingService = {
     id: string | number
   ): Promise<TrainingProgram | null> {
     try {
-      const response = await apiRequest<TrainingApiResponse>(
-        `/api/training/${id}`
-      );
+      const response =
+        await apiRequest<TrainingApiResponse>(
+          `/api/training/${id}`
+        );
 
-      return mapTrainingProgram(response);
+      const program =
+        mapTrainingProgram(response);
+
+      /*
+       * Keep local copy updated.
+       */
+      const existingIndex =
+        localPrograms.findIndex(
+          (item) =>
+            String(item.id) === String(id)
+        );
+
+      if (existingIndex >= 0) {
+        localPrograms[existingIndex] =
+          program;
+      } else {
+        localPrograms.push(program);
+      }
+
+      return enrichProgram(program);
     } catch (error) {
       console.error(
         `Failed to load training program ${id}:`,
@@ -161,5 +335,238 @@ export const trainingService = {
       return null;
     }
   },
-};
 
+  /* =======================================================
+     TEMPORARY COMPATIBILITY METHODS
+     ======================================================= */
+
+  /*
+   * IMPORTANT:
+   *
+   * The methods below are NOT connected to the backend yet.
+   *
+   * They are kept because TrainingPage.tsx currently calls
+   * them. They will be replaced with real backend APIs
+   * in future milestones.
+   */
+
+  /* -------------------------------------------------------
+     CREATE
+     ------------------------------------------------------- */
+
+  async create(
+    payload: Omit<
+      TrainingProgram,
+      | 'id'
+      | 'assignedEmployeeIds'
+      | 'registeredEmployeeIds'
+      | 'attendance'
+      | 'completion'
+    >
+  ): Promise<TrainingProgram> {
+    const newProgram: TrainingProgram = {
+      ...payload,
+
+      id: `LOCAL-${Date.now()}`,
+
+      assignedEmployeeIds: [],
+
+      registeredEmployeeIds: [],
+
+      attendance: {},
+
+      completion: {},
+    };
+
+    localPrograms.push(newProgram);
+
+    return newProgram;
+  },
+
+  /* -------------------------------------------------------
+     UPDATE
+     ------------------------------------------------------- */
+
+  async update(
+    id: string,
+    payload: Partial<TrainingProgram>
+  ): Promise<TrainingProgram> {
+    const index = localPrograms.findIndex(
+      (program) =>
+        String(program.id) === String(id)
+    );
+
+    if (index === -1) {
+      throw new Error(
+        'Training program not found'
+      );
+    }
+
+    localPrograms[index] = {
+      ...localPrograms[index],
+      ...payload,
+    };
+
+    return localPrograms[index];
+  },
+
+  /* -------------------------------------------------------
+     DELETE
+     ------------------------------------------------------- */
+
+  async delete(
+    id: string
+  ): Promise<void> {
+    localPrograms = localPrograms.filter(
+      (program) =>
+        String(program.id) !== String(id)
+    );
+  },
+
+  /* =======================================================
+     EMPLOYEE METHODS
+     ======================================================= */
+
+  async getAllEmployees(): Promise<
+    TrainingEmployee[]
+  > {
+    return localEmployees;
+  },
+
+  async getEmployees(
+    trainingId: string
+  ): Promise<TrainingEmployee[]> {
+    const program =
+      localPrograms.find(
+        (item) =>
+          String(item.id) ===
+          String(trainingId)
+      );
+
+    if (!program) {
+      return [];
+    }
+
+    return localEmployees.filter(
+      (employee) =>
+        program.assignedEmployeeIds.includes(
+          employee.id
+        )
+    );
+  },
+
+  /* -------------------------------------------------------
+     ASSIGN EMPLOYEES
+     ------------------------------------------------------- */
+
+  async assignEmployees(
+    trainingId: string,
+    employeeIds: string[]
+  ): Promise<void> {
+    const program =
+      localPrograms.find(
+        (item) =>
+          String(item.id) ===
+          String(trainingId)
+      );
+
+    if (!program) {
+      throw new Error(
+        'Training program not found'
+      );
+    }
+
+    program.assignedEmployeeIds = [
+      ...new Set([
+        ...program.assignedEmployeeIds,
+        ...employeeIds,
+      ]),
+    ];
+  },
+
+  /* -------------------------------------------------------
+     REMOVE ASSIGNMENT
+     ------------------------------------------------------- */
+
+  async removeAssignment(
+    trainingId: string,
+    employeeId: string
+  ): Promise<void> {
+    const program =
+      localPrograms.find(
+        (item) =>
+          String(item.id) ===
+          String(trainingId)
+      );
+
+    if (!program) {
+      throw new Error(
+        'Training program not found'
+      );
+    }
+
+    program.assignedEmployeeIds =
+      program.assignedEmployeeIds.filter(
+        (id) => id !== employeeId
+      );
+  },
+
+  /* =======================================================
+     REGISTRATION
+     ======================================================= */
+
+  async register(
+    trainingId: string,
+    employeeId: string
+  ): Promise<void> {
+    const program =
+      localPrograms.find(
+        (item) =>
+          String(item.id) ===
+          String(trainingId)
+      );
+
+    if (!program) {
+      throw new Error(
+        'Training program not found'
+      );
+    }
+
+    if (
+      !program.registeredEmployeeIds.includes(
+        employeeId
+      )
+    ) {
+      program.registeredEmployeeIds.push(
+        employeeId
+      );
+    }
+  },
+
+  /* -------------------------------------------------------
+     UNREGISTER
+     ------------------------------------------------------- */
+
+  async unregister(
+    trainingId: string,
+    employeeId: string
+  ): Promise<void> {
+    const program =
+      localPrograms.find(
+        (item) =>
+          String(item.id) ===
+          String(trainingId)
+      );
+
+    if (!program) {
+      throw new Error(
+        'Training program not found'
+      );
+    }
+
+    program.registeredEmployeeIds =
+      program.registeredEmployeeIds.filter(
+        (id) => id !== employeeId
+      );
+  },
+};
