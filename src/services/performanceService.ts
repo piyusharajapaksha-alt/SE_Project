@@ -2,82 +2,116 @@ import { apiRequest } from '@/services/apiClient';
 
 export interface PerformanceReviewPayload {
   employeeId: string;
-  reviewPeriod: string; // YYYY-MM
+  reviewPeriod: string;
+
   qualityOfWork: number;
   productivity: number;
   teamwork: number;
   communication: number;
   responsibility: number;
   problemSolving: number;
+
   overallRating: number;
+
   managerFeedback: string;
   areasForImprovement: string;
+
   status: 'Pending Review' | 'Completed';
 }
 
-export interface PerformanceReview extends PerformanceReviewPayload {
-  id: string | number;
+export interface PerformanceReview
+  extends PerformanceReviewPayload {
+  id: number;
   createdAt?: string;
   updatedAt?: string;
 }
 
 export const performanceService = {
-  /**
-   * Get all performance reviews.
-   */
+
+  // ============================================================
+  // READ ALL
+  // ============================================================
+
   async getAll(): Promise<PerformanceReview[]> {
-    const response = await apiRequest<
-      PerformanceReview[] | { data: PerformanceReview[] }
-    >('/api/performance');
 
-    if (Array.isArray(response)) {
-      return response;
-    }
-
-    return response?.data ?? [];
+    return apiRequest<PerformanceReview[]>(
+      '/api/performance'
+    );
   },
 
-  /**
-   * Get performance reviews for one employee.
-   */
-  async getByEmployee(employeeId: string): Promise<PerformanceReview[]> {
-    const response = await apiRequest<
-      PerformanceReview[] | { data: PerformanceReview[] }
-    >(
+  // ============================================================
+  // READ ONE
+  // ============================================================
+
+  async getById(
+    id: number
+  ): Promise<PerformanceReview> {
+
+    return apiRequest<PerformanceReview>(
+      `/api/performance/${id}`
+    );
+  },
+
+  // ============================================================
+  // READ BY EMPLOYEE
+  // ============================================================
+
+  async getByEmployee(
+    employeeId: string
+  ): Promise<PerformanceReview[]> {
+
+    return apiRequest<PerformanceReview[]>(
       `/api/performance/employee/${encodeURIComponent(employeeId)}`
     );
-
-    if (Array.isArray(response)) {
-      return response;
-    }
-
-    return response?.data ?? [];
   },
 
-  /**
-   * Create a new monthly performance review.
-   */
+  // ============================================================
+  // CREATE
+  // ============================================================
+
   async create(
     data: PerformanceReviewPayload
   ): Promise<PerformanceReview> {
-    return apiRequest<PerformanceReview>('/api/performance', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+
+    return apiRequest<PerformanceReview>(
+      '/api/performance',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    );
   },
 
-  /**
-   * Update an existing performance review.
-   */
+  // ============================================================
+  // UPDATE
+  // ============================================================
+
   async update(
-    id: string | number,
+    id: number,
     data: PerformanceReviewPayload
   ): Promise<PerformanceReview> {
+
     return apiRequest<PerformanceReview>(
       `/api/performance/${id}`,
       {
         method: 'PUT',
         body: JSON.stringify(data),
+      }
+    );
+  },
+
+  // ============================================================
+  // DELETE
+  // ============================================================
+
+  async delete(
+    id: number
+  ): Promise<void> {
+
+    await apiRequest<void>(
+      `/api/performance/${id}`,
+      {
+        method: 'DELETE',
       }
     );
   },
