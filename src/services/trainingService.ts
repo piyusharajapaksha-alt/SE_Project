@@ -66,6 +66,7 @@ interface TrainingApiResponse {
   endDate?: string | null;
   location: string;
   capacity: number;
+  trainingFor: string[];
   status: TrainingStatus;
 }
 
@@ -121,7 +122,9 @@ const mapTrainingProgram = (
      *
      * They will be connected later.
      */
-    trainingFor: [],
+    trainingFor: Array.isArray(program.trainingFor)
+      ? program.trainingFor
+      : [],
 
     assignedEmployeeIds: [],
 
@@ -372,7 +375,7 @@ export const trainingService = {
           '/api/training',
           {
             method: 'POST',
-            body: JSON.stringify({
+            body: {
               title: payload.title,
               description: payload.description,
               trainer: payload.trainer,
@@ -381,8 +384,9 @@ export const trainingService = {
               endDate: payload.endDate || null,
               location: payload.location,
               capacity: payload.capacity,
+              trainingFor: payload.trainingFor,
               status: payload.status,
-            }),
+            },
           }
         );
 
@@ -408,27 +412,64 @@ export const trainingService = {
      ------------------------------------------------------- */
 
   async update(
-    id: string,
-    payload: Partial<TrainingProgram>
-  ): Promise<TrainingProgram> {
-    const index = localPrograms.findIndex(
-      (program) =>
-        String(program.id) === String(id)
-    );
+  id: string,
+  payload: Partial<TrainingProgram>
+): Promise<TrainingProgram> {
 
-    if (index === -1) {
-      throw new Error(
-        'Training program not found'
+  try {
+
+    const response =
+      await apiRequest<TrainingApiResponse>(
+        `/api/training/${id}`,
+        {
+          method: 'PUT',
+          body: {
+            title: payload.title,
+            description: payload.description,
+            trainer: payload.trainer,
+            category: payload.category,
+            startDate: payload.startDate,
+            endDate: payload.endDate || null,
+            location: payload.location,
+            capacity: payload.capacity,
+            trainingFor: payload.trainingFor || [],
+            status: payload.status,
+          },
+        }
+      );
+
+    const updatedProgram =
+      mapTrainingProgram(response);
+
+    const index =
+      localPrograms.findIndex(
+        (program) =>
+          String(program.id) === String(id)
+      );
+
+    if (index >= 0) {
+      localPrograms[index] =
+        updatedProgram;
+    } else {
+      localPrograms.push(
+        updatedProgram
       );
     }
 
-    localPrograms[index] = {
-      ...localPrograms[index],
-      ...payload,
-    };
+    return enrichProgram(
+      updatedProgram
+    );
 
-    return localPrograms[index];
-  },
+  } catch (error) {
+
+    console.error(
+      `Failed to update training program ${id}:`,
+      error
+    );
+
+    throw error;
+  }
+},
 
   /* -------------------------------------------------------
      DELETE
