@@ -364,25 +364,45 @@ export const trainingService = {
       | 'completion'
     >
   ): Promise<TrainingProgram> {
-    const newProgram: TrainingProgram = {
-      ...payload,
 
-      id: `LOCAL-${Date.now()}`,
+    try {
 
-      assignedEmployeeIds: [],
+      const response =
+        await apiRequest<TrainingApiResponse>(
+          '/api/training',
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              title: payload.title,
+              description: payload.description,
+              trainer: payload.trainer,
+              category: payload.category,
+              startDate: payload.startDate,
+              endDate: payload.endDate || null,
+              location: payload.location,
+              capacity: payload.capacity,
+              status: payload.status,
+            }),
+          }
+        );
 
-      registeredEmployeeIds: [],
+      const createdProgram =
+        mapTrainingProgram(response);
 
-      attendance: {},
+      localPrograms.push(createdProgram);
 
-      completion: {},
-    };
+      return enrichProgram(createdProgram);
 
-    localPrograms.push(newProgram);
+    } catch (error) {
 
-    return newProgram;
+      console.error(
+        'Failed to create training program:',
+        error
+      );
+
+      throw error;
+    }
   },
-
   /* -------------------------------------------------------
      UPDATE
      ------------------------------------------------------- */
