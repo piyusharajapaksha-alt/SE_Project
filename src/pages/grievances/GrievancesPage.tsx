@@ -1,68 +1,77 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
+import { grievanceService } from '@/services/grievanceService';
+
 import {
   PageHeader,
   SearchInput,
   SelectFilter,
   Badge,
   Pagination,
+  LoadingState,
   EmptyState,
   Modal,
   FormSelect,
   FormTextarea,
 } from '@/components/ui';
-import {
-  MessageSquareWarning,
-  Plus,
-  Eye,
-  Send,
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  UserRoundCheck,
-} from 'lucide-react';
+
 import {
   GRIEVANCE_CATEGORIES,
   GRIEVANCE_PRIORITIES,
   GRIEVANCE_STATUSES,
 } from '@/config';
 
-type GrievanceStatus =
-  | 'New'
-  | 'Under Review'
-  | 'Assigned'
-  | 'Resolved'
-  | 'Closed';
+import {
+  MessageSquareWarning,
+  Plus,
+  Eye,
+  Loader2,
+  Send,
+  RefreshCw,
+} from 'lucide-react';
 
-type Grievance = {
-  id: string;
-  employeeName: string;
+interface Grievance {
+  id: number;
+  employeeId: string;
+  employeeName?: string;
   category: string;
   priority: string;
-  status: GrievanceStatus;
-  createdAt: string;
   description: string;
+  status: string;
+  createdAt?: string;
   assignedToName?: string;
   responses?: {
     text: string;
-    date: string;
+    date?: string;
   }[];
-};
+}
 
-const EMPTY_GRIEVANCES: Grievance[] = [];
+interface GrievanceFilters {
+  search?: string;
+  status?: string;
+  priority?: string;
+  category?: string;
+  employeeId?: string;
+}
 
 export default function GrievancesPage() {
   const { user, checkPermission } = useAuth();
   const { addToast } = useToast();
   const location = useLocation();
 
-  const isManagementView = location.pathname.startsWith('/management/');
-  const canManage =
-    isManagementView && checkPermission('grievances.manage');
+  const isManagementView =
+    location.pathname.startsWith('/management/');
 
-  const [grievances] = useState<Grievance[]>(EMPTY_GRIEVANCES);
+  const isEmployeeView = !isManagementView;
+
+  const canManage =
+    isManagementView &&
+    checkPermission('grievances.manage');
+
+  const [grievances, setGrievances] = useState<Grievance[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -71,15 +80,18 @@ export default function GrievancesPage() {
 
   const [currentPage, setCurrentPage] = useState(1);
 
+  const [showForm, setShowForm] = useState(false);
   const [showDetail, setShowDetail] =
     useState<Grievance | null>(null);
 
-  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const [showRespond, setShowRespond] =
     useState<Grievance | null>(null);
 
   const [responseText, setResponseText] = useState('');
+  const [respondLoading, setRespondLoading] =
+    useState(false);
 
   const [form, setForm] = useState({
     category: '',
@@ -87,172 +99,303 @@ export default function GrievancesPage() {
     description: '',
   });
 
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] =
+    useState<Record<string, string>>({});
 
   const perPage = 10;
 
   /*
    * ---------------------------------------------------------
-   * FILTERING
-   *
-   * There is currently no backend/mock dataset.
-   * These filters are kept ready for backend integration.
+   * LOAD GRIEVANCES
    * ---------------------------------------------------------
+   *
+   * IMPORTANT:
+   * This keeps the original getAll(filters) architecture.
+   *
+   * The page sends filters to grievanceService.
+   * grievanceService will communicate with Spring Boot.
    */
+  const loadData = async () => {
+    setLoading(true);
 
-  const filteredGrievances = grievances.filter((grievance) => {
-    const matchesSearch =
-      !search ||
-      grievance.id.toLowerCase().includes(search.toLowerCase()) ||
-      grievance.employeeName
-        .toLowerCase()
-        .includes(search.toLowerCase()) ||
-      grievance.category
-        .toLowerCase()
-        .includes(search.toLowerCase());
+    try {
+      const filters: GrievanceFilters = {};
 
-    const matchesStatus =
-      statusFilter === 'All' ||
-      grievance.status === statusFilter;
+      if (isEmployeeView && user?.employeeId) {
+        filters.employeeId = user.employeeId;
+      }
 
-    const matchesPriority =
-      priorityFilter === 'All' ||
-      grievance.priority === priorityFilter;
+      if (search.trim()) {
+        filters.search = search.trim();
+      }
 
-    const matchesCategory =
-      categoryFilter === 'All' ||
-      grievance.category === categoryFilter;
+      if (statusFilter !== 'All') {
+        filters.status = statusFilter;
+      }
 
-    return (
-      matchesSearch &&
-      matchesStatus &&
-      matchesPriority &&
-      matchesCategory
-    );
-  });
+      if (priorityFilter !== 'All') {
+        filters.priority = priorityFilter;
+      }
 
-  const pagedGrievances = filteredGrievances.slice(
-    (currentPage - 1) * perPage,
-    currentPage * perPage,
-  );
+      if (categoryFilter !== 'All') {
+        filters.category = categoryFilter;
+      }
 
-  const totalPages = Math.ceil(
-    filteredGrievances.length / perPage,
-  );
+      const data =
+        await grievanceService.getAll(filters);
+
+      setGrievances(data || []);
+    } catch (error) {
+      console.error(
+        'Failed to load grievances:',
+        error
+      );
+
+      setGrievances([]);
+
+      addToast(
+        'error',
+        'Failed to load grievances',
+        'Unable to retrieve grievance records from the server.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setCurrentPage(1);
+    loadData();
+  }, [
+    search,
+    statusFilter,
+    priorityFilter,
+    categoryFilter,
+    user?.employeeId,
+    isManagementView,
+  ]);
 
   /*
    * ---------------------------------------------------------
-   * FORM VALIDATION
+   * SUBMIT VALIDATION
    * ---------------------------------------------------------
    */
-
-  const validateForm = () => {
-    const nextErrors: Record<string, string> = {};
+  const validate = () => {
+    const newErrors: Record<string, string> = {};
 
     if (!form.category) {
-      nextErrors.category = 'Category is required';
+      newErrors.category = 'Category is required';
     }
 
     if (!form.description.trim()) {
-      nextErrors.description = 'Description is required';
+      newErrors.description =
+        'Description is required';
     } else if (form.description.trim().length < 20) {
-      nextErrors.description =
+      newErrors.description =
         'Please provide more detail (at least 20 characters)';
     }
 
-    setErrors(nextErrors);
+    setErrors(newErrors);
 
-    return Object.keys(nextErrors).length === 0;
+    return Object.keys(newErrors).length === 0;
   };
 
   /*
    * ---------------------------------------------------------
-   * SUBMIT
-   *
-   * No fake/local grievance is created.
-   * Backend integration will be added later.
+   * SUBMIT GRIEVANCE
    * ---------------------------------------------------------
    */
-
-  const handleSubmit = (event: React.FormEvent) => {
+  const handleSubmit = async (
+    event: React.FormEvent
+  ) => {
     event.preventDefault();
 
-    if (!user) {
+    if (!validate()) {
+      return;
+    }
+
+    if (!user?.employeeId) {
       addToast(
         'error',
-        'You must be logged in to submit a grievance.',
+        'Unable to submit grievance',
+        'Your employee account could not be identified.'
       );
+
       return;
     }
 
-    if (!validateForm()) {
-      return;
+    setSaving(true);
+
+    try {
+      await grievanceService.create({
+        employeeId: user.employeeId,
+        category: form.category,
+        priority: form.priority,
+        description: form.description.trim(),
+      });
+
+      addToast(
+        'success',
+        'Grievance submitted successfully'
+      );
+
+      setShowForm(false);
+
+      setForm({
+        category: '',
+        priority: 'Medium',
+        description: '',
+      });
+
+      setErrors({});
+
+      await loadData();
+    } catch (error) {
+      console.error(
+        'Failed to submit grievance:',
+        error
+      );
+
+      addToast(
+        'error',
+        'Failed to submit grievance',
+        'Please try again.'
+      );
+    } finally {
+      setSaving(false);
     }
-
-    addToast(
-      'info',
-      'Grievance submission is ready for backend integration.',
-    );
-
-    setShowForm(false);
-
-    setForm({
-      category: '',
-      priority: 'Medium',
-      description: '',
-    });
-
-    setErrors({});
   };
 
   /*
    * ---------------------------------------------------------
-   * RESPONSE
+   * VIEW DETAILS
+   * ---------------------------------------------------------
+   */
+  const handleViewDetails = async (
+    grievance: Grievance
+  ) => {
+    try {
+      const detail =
+        await grievanceService.getById(
+          grievance.id
+        );
+
+      setShowDetail(detail);
+    } catch (error) {
+      console.error(
+        'Failed to load grievance:',
+        error
+      );
+
+      addToast(
+        'error',
+        'Failed to load grievance details'
+      );
+    }
+  };
+
+  /*
+   * ---------------------------------------------------------
+   * MANAGEMENT RESPONSE
+   * ---------------------------------------------------------
    *
-   * No fake response is stored.
-   * ---------------------------------------------------------
+   * Kept here so the existing management UI does not
+   * disappear. The backend response endpoint will be
+   * connected through grievanceService.
    */
-
-  const handleRespond = () => {
-    if (!showRespond) {
+  const handleRespond = async () => {
+    if (
+      !showRespond ||
+      !user?.employeeId ||
+      !responseText.trim()
+    ) {
       return;
     }
 
-    if (!responseText.trim()) {
-      addToast('error', 'Please enter a response.');
-      return;
+    setRespondLoading(true);
+
+    try {
+      await grievanceService.addResponse(
+        showRespond.id,
+        user.employeeId,
+        responseText.trim()
+      );
+
+      addToast(
+        'success',
+        'Response added successfully'
+      );
+
+      setShowRespond(null);
+      setResponseText('');
+
+      await loadData();
+    } catch (error) {
+      console.error(
+        'Failed to add response:',
+        error
+      );
+
+      addToast(
+        'error',
+        'Failed to add response'
+      );
+    } finally {
+      setRespondLoading(false);
     }
-
-    addToast(
-      'info',
-      'Grievance response is ready for backend integration.',
-    );
-
-    setShowRespond(null);
-    setResponseText('');
   };
 
   /*
    * ---------------------------------------------------------
-   * STATUS
-   *
-   * No fake status is changed.
+   * STATUS UPDATE
    * ---------------------------------------------------------
    */
+  const handleStatusUpdate = async (
+    id: number,
+    status: string
+  ) => {
+    if (!user?.employeeId) {
+      return;
+    }
 
-  const handleStatusUpdate = (status: GrievanceStatus) => {
-    addToast(
-      'info',
-      `Status change to "${status}" is ready for backend integration.`,
-    );
+    try {
+      await grievanceService.updateStatus(
+        id,
+        status,
+        user.employeeId
+      );
+
+      addToast(
+        'success',
+        `Status updated to ${status}`
+      );
+
+      if (showDetail?.id === id) {
+        const updated =
+          await grievanceService.getById(id);
+
+        setShowDetail(updated);
+      }
+
+      await loadData();
+    } catch (error) {
+      console.error(
+        'Failed to update status:',
+        error
+      );
+
+      addToast(
+        'error',
+        'Failed to update status'
+      );
+    }
   };
 
   /*
    * ---------------------------------------------------------
-   * BADGES
+   * BADGE HELPERS
    * ---------------------------------------------------------
    */
-
   const priorityBadge = (priority: string) => {
     if (
       priority === 'High' ||
@@ -282,25 +425,70 @@ export default function GrievancesPage() {
       case 'Resolved':
         return 'success';
 
+      case 'Closed':
+        return 'neutral';
+
       default:
         return 'neutral';
     }
   };
 
+  /*
+   * ---------------------------------------------------------
+   * CLIENT-SIDE PAGINATION
+   * ---------------------------------------------------------
+   */
+  const totalPages = Math.max(
+    1,
+    Math.ceil(grievances.length / perPage)
+  );
+
+  const pagedGrievances = grievances.slice(
+    (currentPage - 1) * perPage,
+    currentPage * perPage
+  );
+
+  /*
+   * ---------------------------------------------------------
+   * RESET FILTERS
+   * ---------------------------------------------------------
+   */
+  const resetFilters = () => {
+    setSearch('');
+    setStatusFilter('All');
+    setPriorityFilter('All');
+    setCategoryFilter('All');
+    setCurrentPage(1);
+  };
+
   return (
-    <div>
+    <div className="space-y-6">
+
+      {/* =====================================================
+          HEADER
+      ====================================================== */}
       <PageHeader
         title="Grievances & Feedback"
         description={
           canManage
-            ? 'Manage and resolve employee grievances'
-            : 'Submit and track your grievances'
+            ? 'Review, respond to, and resolve employee grievances'
+            : 'Submit and track your workplace grievances'
         }
         action={
           !canManage ? (
             <button
               onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+              className="
+                inline-flex items-center gap-2
+                rounded-lg
+                bg-indigo-600
+                px-4 py-2
+                text-sm font-medium
+                text-white
+                shadow-sm
+                transition
+                hover:bg-indigo-700
+              "
             >
               <Plus className="h-4 w-4" />
               Submit Grievance
@@ -311,121 +499,113 @@ export default function GrievancesPage() {
 
       {/* =====================================================
           FILTERS
-          ===================================================== */}
+      ====================================================== */}
+      <div
+        className="
+          rounded-xl
+          border border-gray-200
+          bg-white
+          p-4
+        "
+      >
+        <div className="flex flex-col gap-3 lg:flex-row">
 
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row">
-        <div className="flex-1">
-          <SearchInput
-            value={search}
+          <div className="flex-1">
+            <SearchInput
+              value={search}
+              onChange={(value) => {
+                setSearch(value);
+                setCurrentPage(1);
+              }}
+              placeholder="Search grievances..."
+            />
+          </div>
+
+          <SelectFilter
+            value={statusFilter}
             onChange={(value) => {
-              setSearch(value);
+              setStatusFilter(value);
               setCurrentPage(1);
             }}
-            placeholder="Search grievances..."
+            options={GRIEVANCE_STATUSES}
           />
+
+          <SelectFilter
+            value={priorityFilter}
+            onChange={(value) => {
+              setPriorityFilter(value);
+              setCurrentPage(1);
+            }}
+            options={GRIEVANCE_PRIORITIES}
+          />
+
+          <SelectFilter
+            value={categoryFilter}
+            onChange={(value) => {
+              setCategoryFilter(value);
+              setCurrentPage(1);
+            }}
+            options={GRIEVANCE_CATEGORIES}
+          />
+
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="
+              inline-flex items-center
+              justify-center gap-2
+              rounded-lg
+              border border-gray-300
+              bg-white
+              px-3 py-2
+              text-sm font-medium
+              text-gray-700
+              hover:bg-gray-50
+            "
+          >
+            <RefreshCw className="h-4 w-4" />
+            Reset
+          </button>
         </div>
-
-        <SelectFilter
-          value={statusFilter}
-          onChange={(value) => {
-            setStatusFilter(value);
-            setCurrentPage(1);
-          }}
-          options={GRIEVANCE_STATUSES}
-        />
-
-        <SelectFilter
-          value={priorityFilter}
-          onChange={(value) => {
-            setPriorityFilter(value);
-            setCurrentPage(1);
-          }}
-          options={GRIEVANCE_PRIORITIES}
-        />
-
-        <SelectFilter
-          value={categoryFilter}
-          onChange={(value) => {
-            setCategoryFilter(value);
-            setCurrentPage(1);
-          }}
-          options={GRIEVANCE_CATEGORIES}
-        />
       </div>
 
       {/* =====================================================
-          SUMMARY CARDS
-          ===================================================== */}
-
-      {canManage && (
-        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <SummaryCard
-            title="New"
-            value={0}
-            icon={<MessageSquareWarning className="h-5 w-5" />}
-          />
-
-          <SummaryCard
-            title="Under Review"
-            value={0}
-            icon={<Clock className="h-5 w-5" />}
-          />
-
-          <SummaryCard
-            title="Assigned"
-            value={0}
-            icon={<UserRoundCheck className="h-5 w-5" />}
-          />
-
-          <SummaryCard
-            title="Resolved"
-            value={0}
-            icon={<CheckCircle className="h-5 w-5" />}
-          />
-
-          <SummaryCard
-            title="High Priority"
-            value={0}
-            icon={<AlertTriangle className="h-5 w-5" />}
-          />
-        </div>
-      )}
-
-      {/* =====================================================
-          EMPTY STATE / TABLE
-          ===================================================== */}
-
-      {filteredGrievances.length === 0 ? (
-        <div className="rounded-xl border border-gray-200 bg-white">
-          <EmptyState
-            icon={
-              <MessageSquareWarning className="h-6 w-6" />
-            }
-            title="No grievances found"
-          />
-
-          <div className="border-t border-gray-100 px-6 py-4 text-center">
-            <p className="text-xs text-gray-400">
-              {canManage
-                ? 'Employee grievance records will appear here when backend data is available.'
-                : 'Your submitted grievances will appear here when grievance data is available.'}
-            </p>
-          </div>
-        </div>
+          CONTENT
+      ====================================================== */}
+      {loading ? (
+        <LoadingState />
+      ) : grievances.length === 0 ? (
+        <EmptyState
+          icon={
+            <MessageSquareWarning className="h-6 w-6" />
+          }
+          title="No grievances found"
+        />
       ) : (
         <>
-          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+          <div
+            className="
+              overflow-hidden
+              rounded-xl
+              border border-gray-200
+              bg-white
+            "
+          >
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
+
                 <thead className="bg-gray-50">
                   <tr>
+
                     <th className="px-4 py-3 text-left font-medium text-gray-600">
                       ID
                     </th>
 
-                    <th className="px-4 py-3 text-left font-medium text-gray-600">
-                      Employee
-                    </th>
+                    {canManage && (
+                      <th className="px-4 py-3 text-left font-medium text-gray-600">
+                        Employee
+                      </th>
+                    )}
 
                     <th className="px-4 py-3 text-left font-medium text-gray-600">
                       Category
@@ -446,83 +626,123 @@ export default function GrievancesPage() {
                     <th className="px-4 py-3 text-right font-medium text-gray-600">
                       Actions
                     </th>
+
                   </tr>
                 </thead>
 
                 <tbody>
-                  {pagedGrievances.map((grievance) => (
-                    <tr
-                      key={grievance.id}
-                      className="border-t border-gray-100 hover:bg-gray-50"
-                    >
-                      <td className="px-4 py-3 font-medium text-gray-900">
-                        {grievance.id}
-                      </td>
 
-                      <td className="px-4 py-3 text-gray-600">
-                        {grievance.employeeName}
-                      </td>
+                  {pagedGrievances.map(
+                    (grievance) => (
+                      <tr
+                        key={grievance.id}
+                        className="
+                          border-t border-gray-100
+                          transition
+                          hover:bg-gray-50
+                        "
+                      >
 
-                      <td className="px-4 py-3 text-gray-600">
-                        {grievance.category}
-                      </td>
+                        <td className="px-4 py-3 font-medium text-gray-900">
+                          #{grievance.id}
+                        </td>
 
-                      <td className="px-4 py-3">
-                        <Badge
-                          variant={
-                            priorityBadge(
-                              grievance.priority,
-                            ) as any
-                          }
-                        >
-                          {grievance.priority}
-                        </Badge>
-                      </td>
+                        {canManage && (
+                          <td className="px-4 py-3 text-gray-600">
+                            {grievance.employeeName ||
+                              grievance.employeeId ||
+                              '—'}
+                          </td>
+                        )}
 
-                      <td className="px-4 py-3">
-                        <Badge
-                          variant={
-                            statusBadge(
-                              grievance.status,
-                            ) as any
-                          }
-                          dot
-                        >
-                          {grievance.status}
-                        </Badge>
-                      </td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {grievance.category}
+                        </td>
 
-                      <td className="hidden px-4 py-3 text-gray-600 md:table-cell">
-                        {grievance.createdAt}
-                      </td>
-
-                      <td className="px-4 py-3">
-                        <div className="flex justify-end gap-1">
-                          <button
-                            onClick={() =>
-                              setShowDetail(grievance)
+                        <td className="px-4 py-3">
+                          <Badge
+                            variant={
+                              priorityBadge(
+                                grievance.priority
+                              ) as any
                             }
-                            className="rounded-lg p-1.5 text-gray-400 hover:bg-indigo-50 hover:text-indigo-600"
-                            title="View grievance"
                           >
-                            <Eye className="h-4 w-4" />
-                          </button>
+                            {grievance.priority}
+                          </Badge>
+                        </td>
 
-                          {canManage && (
+                        <td className="px-4 py-3">
+                          <Badge
+                            variant={
+                              statusBadge(
+                                grievance.status
+                              ) as any
+                            }
+                            dot
+                          >
+                            {grievance.status}
+                          </Badge>
+                        </td>
+
+                        <td className="hidden px-4 py-3 text-gray-600 md:table-cell">
+                          {grievance.createdAt
+                            ? new Date(
+                                grievance.createdAt
+                              ).toLocaleDateString()
+                            : '—'}
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <div className="flex justify-end">
+
                             <button
-                              onClick={() => {
-                                setShowRespond(grievance);
-                              }}
-                              className="rounded-lg p-1.5 text-gray-400 hover:bg-green-50 hover:text-green-600"
-                              title="Respond"
+                              type="button"
+                              onClick={() =>
+                                handleViewDetails(
+                                  grievance
+                                )
+                              }
+                              className="
+                                rounded-lg
+                                p-2
+                                text-gray-400
+                                hover:bg-indigo-50
+                                hover:text-indigo-600
+                              "
+                              title="View grievance"
                             >
-                              <Send className="h-4 w-4" />
+                              <Eye className="h-4 w-4" />
                             </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+
+                            {canManage && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowRespond(
+                                    grievance
+                                  );
+                                  setResponseText('');
+                                }}
+                                className="
+                                  rounded-lg
+                                  p-2
+                                  text-gray-400
+                                  hover:bg-green-50
+                                  hover:text-green-600
+                                "
+                                title="Respond"
+                              >
+                                <Send className="h-4 w-4" />
+                              </button>
+                            )}
+
+                          </div>
+                        </td>
+
+                      </tr>
+                    )
+                  )}
+
                 </tbody>
               </table>
             </div>
@@ -538,37 +758,50 @@ export default function GrievancesPage() {
 
       {/* =====================================================
           DETAIL MODAL
-          ===================================================== */}
-
+      ====================================================== */}
       <Modal
         isOpen={!!showDetail}
         onClose={() => setShowDetail(null)}
-        title={`Grievance ${showDetail?.id || ''}`}
+        title={`Grievance #${showDetail?.id || ''}`}
         size="lg"
       >
         {showDetail && (
           <div className="space-y-5">
-            <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-              <DetailItem
-                label="Employee"
-                value={showDetail.employeeName}
-              />
 
-              <DetailItem
-                label="Category"
-                value={showDetail.category}
-              />
+            <div className="grid grid-cols-1 gap-4 rounded-xl bg-gray-50 p-4 sm:grid-cols-2">
 
               <div>
-                <span className="text-gray-500">
-                  Priority:
-                </span>
+                <p className="text-xs text-gray-500">
+                  Employee
+                </p>
+
+                <p className="mt-1 text-sm font-medium text-gray-900">
+                  {showDetail.employeeName ||
+                    showDetail.employeeId ||
+                    '—'}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-500">
+                  Category
+                </p>
+
+                <p className="mt-1 text-sm font-medium text-gray-900">
+                  {showDetail.category}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-500">
+                  Priority
+                </p>
 
                 <div className="mt-1">
                   <Badge
                     variant={
                       priorityBadge(
-                        showDetail.priority,
+                        showDetail.priority
                       ) as any
                     }
                   >
@@ -578,15 +811,15 @@ export default function GrievancesPage() {
               </div>
 
               <div>
-                <span className="text-gray-500">
-                  Status:
-                </span>
+                <p className="text-xs text-gray-500">
+                  Status
+                </p>
 
                 <div className="mt-1">
                   <Badge
                     variant={
                       statusBadge(
-                        showDetail.status,
+                        showDetail.status
                       ) as any
                     }
                     dot
@@ -596,18 +829,31 @@ export default function GrievancesPage() {
                 </div>
               </div>
 
-              <DetailItem
-                label="Assigned To"
-                value={
-                  showDetail.assignedToName ||
-                  'Unassigned'
-                }
-              />
+              <div>
+                <p className="text-xs text-gray-500">
+                  Assigned To
+                </p>
 
-              <DetailItem
-                label="Created"
-                value={showDetail.createdAt}
-              />
+                <p className="mt-1 text-sm font-medium text-gray-900">
+                  {showDetail.assignedToName ||
+                    'Unassigned'}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-500">
+                  Created
+                </p>
+
+                <p className="mt-1 text-sm font-medium text-gray-900">
+                  {showDetail.createdAt
+                    ? new Date(
+                        showDetail.createdAt
+                      ).toLocaleString()
+                    : '—'}
+                </p>
+              </div>
+
             </div>
 
             <div>
@@ -615,15 +861,17 @@ export default function GrievancesPage() {
                 Description
               </h4>
 
-              <p className="rounded-lg bg-gray-50 p-4 text-sm leading-6 text-gray-600">
-                {showDetail.description}
-              </p>
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <p className="whitespace-pre-wrap text-sm leading-6 text-gray-600">
+                  {showDetail.description}
+                </p>
+              </div>
             </div>
 
             {showDetail.responses &&
               showDetail.responses.length > 0 && (
                 <div>
-                  <h4 className="mb-2 text-sm font-semibold text-gray-900">
+                  <h4 className="mb-3 text-sm font-semibold text-gray-900">
                     Responses
                   </h4>
 
@@ -632,17 +880,24 @@ export default function GrievancesPage() {
                       (response, index) => (
                         <div
                           key={index}
-                          className="rounded-lg bg-indigo-50 p-4"
+                          className="
+                            rounded-xl
+                            border border-indigo-100
+                            bg-indigo-50
+                            p-4
+                          "
                         >
                           <p className="text-sm text-gray-700">
                             {response.text}
                           </p>
 
-                          <p className="mt-1 text-xs text-gray-500">
-                            {response.date}
-                          </p>
+                          {response.date && (
+                            <p className="mt-2 text-xs text-gray-500">
+                              {response.date}
+                            </p>
+                          )}
                         </div>
-                      ),
+                      )
                     )}
                   </div>
                 </div>
@@ -652,14 +907,23 @@ export default function GrievancesPage() {
               showDetail.status !== 'Resolved' &&
               showDetail.status !== 'Closed' && (
                 <div className="flex flex-wrap gap-2 border-t border-gray-200 pt-4">
+
                   {showDetail.status === 'New' && (
                     <button
                       onClick={() =>
                         handleStatusUpdate(
-                          'Under Review',
+                          showDetail.id,
+                          'Under Review'
                         )
                       }
-                      className="rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100"
+                      className="
+                        rounded-lg
+                        bg-amber-50
+                        px-3 py-2
+                        text-xs font-medium
+                        text-amber-700
+                        hover:bg-amber-100
+                      "
                     >
                       Mark Under Review
                     </button>
@@ -669,9 +933,19 @@ export default function GrievancesPage() {
                     'Under Review' && (
                     <button
                       onClick={() =>
-                        handleStatusUpdate('Assigned')
+                        handleStatusUpdate(
+                          showDetail.id,
+                          'Assigned'
+                        )
                       }
-                      className="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                      className="
+                        rounded-lg
+                        bg-blue-50
+                        px-3 py-2
+                        text-xs font-medium
+                        text-blue-700
+                        hover:bg-blue-100
+                      "
                     >
                       Assign
                     </button>
@@ -679,22 +953,33 @@ export default function GrievancesPage() {
 
                   <button
                     onClick={() =>
-                      handleStatusUpdate('Resolved')
+                      handleStatusUpdate(
+                        showDetail.id,
+                        'Resolved'
+                      )
                     }
-                    className="rounded-lg bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
+                    className="
+                      rounded-lg
+                      bg-green-50
+                      px-3 py-2
+                      text-xs font-medium
+                      text-green-700
+                      hover:bg-green-100
+                    "
                   >
                     Resolve
                   </button>
+
                 </div>
               )}
+
           </div>
         )}
       </Modal>
 
       {/* =====================================================
           SUBMIT GRIEVANCE MODAL
-          ===================================================== */}
-
+      ====================================================== */}
       <Modal
         isOpen={showForm}
         onClose={() => setShowForm(false)}
@@ -705,6 +990,7 @@ export default function GrievancesPage() {
           onSubmit={handleSubmit}
           className="space-y-4"
         >
+
           <FormSelect
             label="Category"
             required
@@ -719,7 +1005,7 @@ export default function GrievancesPage() {
               (category) => ({
                 value: category,
                 label: category,
-              }),
+              })
             )}
             placeholder="Select category"
             error={errors.category}
@@ -738,7 +1024,7 @@ export default function GrievancesPage() {
               (priority) => ({
                 value: priority,
                 label: priority,
-              }),
+              })
             )}
           />
 
@@ -757,129 +1043,145 @@ export default function GrievancesPage() {
             placeholder="Describe your grievance in detail..."
           />
 
-          <div className="rounded-lg border border-blue-100 bg-blue-50 p-3">
-            <p className="text-xs leading-5 text-blue-700">
-              Your grievance will be submitted to the
-              appropriate officer once backend integration
-              is available.
-            </p>
-          </div>
+          <div className="flex justify-end gap-3 border-t border-gray-200 pt-4">
 
-          <div className="flex justify-end gap-3 border-t border-gray-100 pt-4">
             <button
               type="button"
               onClick={() => setShowForm(false)}
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="
+                rounded-lg
+                border border-gray-300
+                bg-white
+                px-4 py-2
+                text-sm font-medium
+                text-gray-700
+                hover:bg-gray-50
+              "
             >
               Cancel
             </button>
 
             <button
               type="submit"
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+              disabled={saving}
+              className="
+                inline-flex items-center gap-2
+                rounded-lg
+                bg-indigo-600
+                px-4 py-2
+                text-sm font-medium
+                text-white
+                hover:bg-indigo-700
+                disabled:cursor-not-allowed
+                disabled:opacity-50
+              "
             >
-              Submit
+              {saving && (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
+
+              Submit Grievance
             </button>
+
           </div>
         </form>
       </Modal>
 
       {/* =====================================================
           RESPONSE MODAL
-          ===================================================== */}
-
+      ====================================================== */}
       <Modal
         isOpen={!!showRespond}
         onClose={() => setShowRespond(null)}
-        title="Add Response"
+        title="Respond to Grievance"
         size="md"
       >
         {showRespond && (
           <div className="space-y-4">
-            <p className="text-sm text-gray-600">
-              Responding to grievance{' '}
-              <strong>{showRespond.id}</strong>.
-            </p>
+
+            <div className="rounded-xl bg-gray-50 p-4">
+              <p className="text-sm text-gray-600">
+                Responding to grievance
+              </p>
+
+              <p className="mt-1 text-sm font-semibold text-gray-900">
+                #{showRespond.id}
+              </p>
+
+              <p className="mt-2 text-xs text-gray-500">
+                {showRespond.employeeName ||
+                  showRespond.employeeId ||
+                  'Employee'}
+              </p>
+            </div>
 
             <FormTextarea
               label="Response"
+              required
               value={responseText}
               onChange={(event) =>
-                setResponseText(event.target.value)
+                setResponseText(
+                  event.target.value
+                )
               }
               rows={5}
               placeholder="Type your response..."
             />
 
-            <div className="flex justify-end gap-3 border-t border-gray-100 pt-4">
+            <div className="flex justify-end gap-3 border-t border-gray-200 pt-4">
+
               <button
-                onClick={() => setShowRespond(null)}
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                type="button"
+                onClick={() =>
+                  setShowRespond(null)
+                }
+                className="
+                  rounded-lg
+                  border border-gray-300
+                  bg-white
+                  px-4 py-2
+                  text-sm font-medium
+                  text-gray-700
+                  hover:bg-gray-50
+                "
               >
                 Cancel
               </button>
 
               <button
+                type="button"
                 onClick={handleRespond}
-                disabled={!responseText.trim()}
-                className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={
+                  !responseText.trim() ||
+                  respondLoading
+                }
+                className="
+                  inline-flex items-center gap-2
+                  rounded-lg
+                  bg-indigo-600
+                  px-4 py-2
+                  text-sm font-medium
+                  text-white
+                  hover:bg-indigo-700
+                  disabled:cursor-not-allowed
+                  disabled:opacity-50
+                "
               >
+                {respondLoading && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+
                 <Send className="h-4 w-4" />
+
                 Send Response
               </button>
+
             </div>
+
           </div>
         )}
       </Modal>
-    </div>
-  );
-}
 
-/* =========================================================
-   SMALL UI COMPONENTS
-   ========================================================= */
-
-function SummaryCard({
-  title,
-  value,
-  icon,
-}: {
-  title: string;
-  value: number;
-  icon: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4">
-      <div className="mb-3 flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
-          {icon}
-        </div>
-
-        <span className="text-sm font-medium text-gray-600">
-          {title}
-        </span>
-      </div>
-
-      <p className="text-2xl font-bold text-gray-900">
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function DetailItem({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div>
-      <span className="text-gray-500">{label}:</span>{' '}
-      <span className="font-medium text-gray-900">
-        {value}
-      </span>
     </div>
   );
 }
