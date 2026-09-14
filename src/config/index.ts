@@ -10,7 +10,7 @@ export const APP_CONFIG = {
   appName: 'StaffHub',
   appDescription: 'Staff Management System',
   version: '1.0.0',
-  dataMode: (import.meta.env.VITE_DATA_MODE || 'mock') as 'mock' | 'api',
+  dataMode: (import.meta.env.VITE_DATA_MODE || 'api') as 'mock' | 'api',
   apiBaseUrl: import.meta.env.VITE_API_BASE_URL || '',
 };
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { dashboardService } from '@/services/dataServices';
+//import { dashboardService } from '@/services/dataServices';
 import { StatCard, Badge, LoadingState } from '@/components/ui';
 import { Users, UserCheck, Clock, AlertTriangle, CalendarDays, GraduationCap, Calendar, TrendingUp, MessageSquareWarning, BarChart3 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
@@ -23,7 +23,7 @@ export default function DashboardPage() {
       // MAIN / Dashboard is always the employee-level dashboard.
       // A user may have a management role, but that role must not change
       // the data shown on the common MAIN navigation.
-      setData(await dashboardService.getEmployeeDashboard(user.employeeId));
+      //setData(await dashboardService.getEmployeeDashboard(user.employeeId));
     } catch (err) {
       console.error('Dashboard error:', err);
     } finally {
