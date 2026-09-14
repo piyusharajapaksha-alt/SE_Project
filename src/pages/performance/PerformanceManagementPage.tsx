@@ -1,380 +1,866 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Award,
+  CalendarDays,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Edit3,
+  Loader2,
   Plus,
-  Save,
+  RefreshCw,
+  Search,
   Star,
+  User,
   X,
 } from 'lucide-react';
 
 import { performanceService } from '@/services/performanceService';
+import type {
+  PerformanceReview,
+  PerformanceReviewPayload,
+} from '@/services/performanceService';
+
 import { useToast } from '@/contexts/ToastContext';
 
-interface PerformanceReview {
-  id?: string | number;
+type Status = 'Pending Review' | 'Completed';
+
+interface FormState {
   employeeId: string;
   reviewPeriod: string;
-
   qualityOfWork: number;
   productivity: number;
   teamwork: number;
   communication: number;
   responsibility: number;
   problemSolving: number;
-
-  overallRating: number;
-
   managerFeedback: string;
   areasForImprovement: string;
-
-  status: 'Pending Review' | 'Completed';
+  status: Status;
 }
 
-interface PerformanceManagementPageProps {
-  editingReview?: PerformanceReview | null;
-  onSaved?: () => void;
-}
+const EMPTY_FORM: FormState = {
+  employeeId: '',
+  reviewPeriod: '',
+  qualityOfWork: 3,
+  productivity: 3,
+  teamwork: 3,
+  communication: 3,
+  responsibility: 3,
+  problemSolving: 3,
+  managerFeedback: '',
+  areasForImprovement: '',
+  status: 'Pending Review',
+};
 
-const KPI_FIELDS = [
+const KPI_FIELDS: {
+  key: keyof Pick<
+    FormState,
+    | 'qualityOfWork'
+    | 'productivity'
+    | 'teamwork'
+    | 'communication'
+    | 'responsibility'
+    | 'problemSolving'
+  >;
+  label: string;
+}[] = [
   {
     key: 'qualityOfWork',
     label: 'Quality of Work',
-    description: 'Accuracy, quality and standard of work',
   },
   {
     key: 'productivity',
     label: 'Productivity',
-    description: 'Efficiency and ability to complete assigned work',
   },
   {
     key: 'teamwork',
     label: 'Teamwork',
-    description: 'Collaboration and support for team members',
   },
   {
     key: 'communication',
     label: 'Communication',
-    description: 'Clarity and effectiveness of communication',
   },
   {
     key: 'responsibility',
     label: 'Responsibility',
-    description: 'Attendance, reliability and ownership',
   },
   {
     key: 'problemSolving',
     label: 'Problem Solving',
-    description: 'Ability to identify and solve problems',
   },
-] as const;
+];
 
-type KpiKey = (typeof KPI_FIELDS)[number]['key'];
+function getCurrentMonth() {
+  const now = new Date();
 
-const getCurrentMonth = () => {
-  const date = new Date();
-
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
 
   return `${year}-${month}`;
-};
+}
 
-const createEmptyReview = (): PerformanceReview => ({
-  employeeId: '',
-  reviewPeriod: getCurrentMonth(),
-
-  qualityOfWork: 0,
-  productivity: 0,
-  teamwork: 0,
-  communication: 0,
-  responsibility: 0,
-  problemSolving: 0,
-
-  overallRating: 0,
-
-  managerFeedback: '',
-  areasForImprovement: '',
-
-  status: 'Pending Review',
-});
-
-const formatReviewMonth = (value: string) => {
-  if (!value) return '';
+function formatReviewMonth(value?: string) {
+  if (!value) return '—';
 
   const [year, month] = value.split('-');
 
-  if (!year || !month) return value;
+  if (!year || !month) {
+    return value;
+  }
 
-  const date = new Date(Number(year), Number(month) - 1, 1);
+  const date = new Date(
+    Number(year),
+    Number(month) - 1,
+    1
+  );
 
   return date.toLocaleDateString('en-US', {
     month: 'long',
     year: 'numeric',
   });
-};
+}
 
-export default function PerformanceManagementPage({
-  editingReview = null,
-  onSaved,
-}: PerformanceManagementPageProps) {
-  const { addToast  } = useToast();
+function getRatingLabel(rating: number) {
+  if (rating >= 4.5) return 'Excellent';
+  if (rating >= 3.5) return 'Good';
+  if (rating >= 2.5) return 'Satisfactory';
+  if (rating >= 1.5) return 'Needs Improvement';
 
-  const [isOpen, setIsOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
+  return 'Unsatisfactory';
+}
 
-  const [form, setForm] = useState<PerformanceReview>(
-    editingReview || createEmptyReview()
+function getStatusClasses(status: Status) {
+  if (status === 'Completed') {
+    return 'bg-green-50 text-green-700 border-green-200';
+  }
+
+  return 'bg-amber-50 text-amber-700 border-amber-200';
+}
+
+export default function PerformanceManagementPage() {
+  const { addToast } = useToast();
+
+  const [reviews, setReviews] = useState<PerformanceReview[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const [error, setError] = useState('');
+
+  const [search, setSearch] = useState('');
+  const [monthFilter, setMonthFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'All' | Status>(
+    'All'
   );
 
-  const isEditing = Boolean(editingReview?.id);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingReview, setEditingReview] =
+    useState<PerformanceReview | null>(null);
 
-  const overallRating = useMemo(() => {
-    const ratings = KPI_FIELDS.map(
-      (field) => form[field.key]
-    );
+  const [form, setForm] = useState<FormState>({
+    ...EMPTY_FORM,
+    reviewPeriod: getCurrentMonth(),
+  });
 
-    const completedRatings = ratings.filter(
-      (rating) => rating > 0
-    );
+  const [saving, setSaving] = useState(false);
 
-    if (completedRatings.length === 0) {
-      return 0;
+  const [expandedReviewId, setExpandedReviewId] =
+    useState<string | number | null>(null);
+
+  /**
+   * Load performance reviews from backend.
+   */
+  const loadReviews = async (showRefreshLoader = false) => {
+    try {
+      setError('');
+
+      if (showRefreshLoader) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+
+      const data = await performanceService.getAll();
+
+      setReviews(data);
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Failed to load performance reviews.';
+
+      setError(message);
+
+      addToast(
+        'error',
+        message,
+        'Performance Reviews'
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
+  };
 
-    const total = completedRatings.reduce(
-      (sum, rating) => sum + rating,
+  useEffect(() => {
+    loadReviews();
+  }, []);
+
+  /**
+   * Filter reviews for the UI.
+   */
+  const filteredReviews = useMemo(() => {
+    const searchValue = search.trim().toLowerCase();
+
+    return reviews.filter((review) => {
+      const matchesSearch =
+        !searchValue ||
+        String(review.employeeId)
+          .toLowerCase()
+          .includes(searchValue) ||
+        String(review.id)
+          .toLowerCase()
+          .includes(searchValue);
+
+      const matchesMonth =
+        !monthFilter ||
+        review.reviewPeriod === monthFilter;
+
+      const matchesStatus =
+        statusFilter === 'All' ||
+        review.status === statusFilter;
+
+      return (
+        matchesSearch &&
+        matchesMonth &&
+        matchesStatus
+      );
+    });
+  }, [
+    reviews,
+    search,
+    monthFilter,
+    statusFilter,
+  ]);
+
+  /**
+   * Calculate overall rating.
+   */
+  const overallRating = useMemo(() => {
+    const values = KPI_FIELDS.map(
+      ({ key }) => Number(form[key]) || 0
+    );
+
+    const total = values.reduce(
+      (sum, value) => sum + value,
       0
     );
 
     return Number(
-      (total / completedRatings.length).toFixed(2)
+      (total / values.length).toFixed(2)
     );
   }, [form]);
 
-  const updateField = (
-    field: keyof PerformanceReview,
-    value: string | number
-  ) => {
-    setForm((current) => ({
-      ...current,
-      [field]: value,
-    }));
+  const openCreateModal = () => {
+    setEditingReview(null);
+
+    setForm({
+      ...EMPTY_FORM,
+      reviewPeriod: getCurrentMonth(),
+    });
+
+    setIsModalOpen(true);
   };
 
-  const updateKpi = (field: KpiKey, value: number) => {
-    setForm((current) => ({
-      ...current,
-      [field]: value,
-      overallRating: value,
-    }));
-  };
+  const openEditModal = (review: PerformanceReview) => {
+    setEditingReview(review);
 
-  const resetForm = () => {
-    setForm(editingReview || createEmptyReview());
+    setForm({
+      employeeId: review.employeeId ?? '',
+      reviewPeriod: review.reviewPeriod ?? '',
+      qualityOfWork: Number(review.qualityOfWork) || 1,
+      productivity: Number(review.productivity) || 1,
+      teamwork: Number(review.teamwork) || 1,
+      communication: Number(review.communication) || 1,
+      responsibility: Number(review.responsibility) || 1,
+      problemSolving: Number(review.problemSolving) || 1,
+      managerFeedback: review.managerFeedback ?? '',
+      areasForImprovement:
+        review.areasForImprovement ?? '',
+      status:
+        review.status === 'Completed'
+          ? 'Completed'
+          : 'Pending Review',
+    });
+
+    setIsModalOpen(true);
   };
 
   const closeModal = () => {
     if (saving) return;
 
-    setIsOpen(false);
-    resetForm();
+    setIsModalOpen(false);
+    setEditingReview(null);
   };
 
-  const openCreate = () => {
-    setForm(createEmptyReview());
-    setIsOpen(true);
+  const updateForm = <K extends keyof FormState>(
+    field: K,
+    value: FormState[K]
+  ) => {
+    setForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
   };
 
-  const openEdit = (review: PerformanceReview) => {
-    setForm(review);
-    setIsOpen(true);
+  const updateKpi = (
+    field: keyof Pick<
+      FormState,
+      | 'qualityOfWork'
+      | 'productivity'
+      | 'teamwork'
+      | 'communication'
+      | 'responsibility'
+      | 'problemSolving'
+    >,
+    value: number
+  ) => {
+    setForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
   };
 
-  const validateForm = () => {
+  const handleSave = async (
+    event: React.FormEvent
+  ) => {
+    event.preventDefault();
+
     if (!form.employeeId.trim()) {
-      addToast ('error','Employee ID is required.' );
-      return false;
+      addToast(
+        'error',
+        'Employee ID is required.',
+        'Validation Error'
+      );
+      return;
     }
 
     if (!form.reviewPeriod) {
-      addToast ('error','Review month is required.' );
-      return false;
+      addToast(
+        'error',
+        'Review month is required.',
+        'Validation Error'
+      );
+      return;
     }
 
-    const missingKpi = KPI_FIELDS.find(
-      (field) => form[field.key] < 1
-    );
-
-    if (missingKpi) {
-      addToast ('error',
-        `Please give a rating for ${missingKpi.label}.`
-);
-      return false;
-    }
-
-    return true;
-  };
-
-  const handleSubmit = async () => {
-    if (!validateForm()) return;
-
-    setSaving(true);
+    const payload: PerformanceReviewPayload = {
+      employeeId: form.employeeId.trim(),
+      reviewPeriod: form.reviewPeriod,
+      qualityOfWork: form.qualityOfWork,
+      productivity: form.productivity,
+      teamwork: form.teamwork,
+      communication: form.communication,
+      responsibility: form.responsibility,
+      problemSolving: form.problemSolving,
+      overallRating,
+      managerFeedback:
+        form.managerFeedback.trim(),
+      areasForImprovement:
+        form.areasForImprovement.trim(),
+      status: form.status,
+    };
 
     try {
-      const payload = {
-        employeeId: form.employeeId.trim(),
-        reviewPeriod: form.reviewPeriod,
+      setSaving(true);
 
-        qualityOfWork: form.qualityOfWork,
-        productivity: form.productivity,
-        teamwork: form.teamwork,
-        communication: form.communication,
-        responsibility: form.responsibility,
-        problemSolving: form.problemSolving,
-
-        overallRating,
-
-        managerFeedback: form.managerFeedback.trim(),
-        areasForImprovement:
-          form.areasForImprovement.trim(),
-
-        status: form.status,
-      };
-
-      if (isEditing && form.id) {
+      if (editingReview) {
         await performanceService.update(
-          form.id,
+          editingReview.id,
           payload
         );
 
-        addToast ('success',
-          'Performance review updated successfully.'
-          
+        addToast(
+          'success',
+          'Performance review updated successfully.',
+          'Review Updated'
         );
       } else {
         await performanceService.create(payload);
 
-        addToast ('success',
-          'Performance review created successfully.'
-          
+        addToast(
+          'success',
+          'Performance review created successfully.',
+          'Review Created'
         );
       }
 
-      setIsOpen(false);
-      resetForm();
+      closeModal();
 
-      onSaved?.();
-    } catch (error) {
-      console.error(
-        'Performance review save error:',
-        error
-      );
-
+      await loadReviews(true);
+    } catch (err) {
       const message =
-        error instanceof Error
-          ? error.message
-          : 'Unable to save performance review.';
+        err instanceof Error
+          ? err.message
+          : 'Failed to save performance review.';
 
-      addToast ('error',message );
+      addToast(
+        'error',
+        message,
+        'Save Failed'
+      );
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100">
-              <Award className="h-5 w-5 text-indigo-600" />
+    <div className="min-h-full bg-gray-50">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+
+        {/* Header */}
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-100">
+                <Award className="h-6 w-6 text-indigo-600" />
+              </div>
+
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  Performance Management
+                </h1>
+
+                <p className="mt-1 text-sm text-gray-500">
+                  Manage monthly employee performance reviews
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => loadReviews(true)}
+              disabled={refreshing}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${
+                  refreshing
+                    ? 'animate-spin'
+                    : ''
+                }`}
+              />
+
+              Refresh
+            </button>
+
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700"
+            >
+              <Plus className="h-4 w-4" />
+              New Review
+            </button>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+
+            {/* Search */}
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+
+              <input
+                type="text"
+                value={search}
+                onChange={(event) =>
+                  setSearch(event.target.value)
+                }
+                placeholder="Search employee ID or review ID..."
+                className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-9 pr-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              />
             </div>
 
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                Performance Management
-              </h1>
+            {/* Month */}
+            <div className="relative">
+              <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
 
+              <input
+                type="month"
+                value={monthFilter}
+                onChange={(event) =>
+                  setMonthFilter(event.target.value)
+                }
+                className="w-full rounded-lg border border-gray-300 bg-white py-2.5 pl-9 pr-3 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              />
+            </div>
+
+            {/* Status */}
+            <select
+              value={statusFilter}
+              onChange={(event) =>
+                setStatusFilter(
+                  event.target.value as
+                    | 'All'
+                    | Status
+                )
+              }
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            >
+              <option value="All">
+                All Statuses
+              </option>
+
+              <option value="Pending Review">
+                Pending Review
+              </option>
+
+              <option value="Completed">
+                Completed
+              </option>
+            </select>
+          </div>
+        </div>
+
+        {/* Summary */}
+        {!loading && (
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
               <p className="text-sm text-gray-500">
-                Create and edit monthly employee performance reviews
+                Total Reviews
+              </p>
+
+              <p className="mt-1 text-2xl font-bold text-gray-900">
+                {reviews.length}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <p className="text-sm text-gray-500">
+                Completed
+              </p>
+
+              <p className="mt-1 text-2xl font-bold text-green-600">
+                {
+                  reviews.filter(
+                    (review) =>
+                      review.status ===
+                      'Completed'
+                  ).length
+                }
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <p className="text-sm text-gray-500">
+                Pending Review
+              </p>
+
+              <p className="mt-1 text-2xl font-bold text-amber-600">
+                {
+                  reviews.filter(
+                    (review) =>
+                      review.status ===
+                      'Pending Review'
+                  ).length
+                }
               </p>
             </div>
           </div>
-        </div>
+        )}
 
-        <button
-          type="button"
-          onClick={openCreate}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700"
-        >
-          <Plus className="h-4 w-4" />
-          Create Monthly Review
-        </button>
-      </div>
+        {/* Loading */}
+        {loading && (
+          <div className="flex min-h-[300px] items-center justify-center rounded-xl border border-gray-200 bg-white">
+            <div className="flex flex-col items-center gap-3 text-gray-500">
+              <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
 
-      {/* Information card */}
-      <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-5">
-        <div className="flex items-start gap-3">
-          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-indigo-600" />
-
-          <div>
-            <h2 className="text-sm font-semibold text-indigo-900">
-              Monthly Performance Reviews
-            </h2>
-
-            <p className="mt-1 text-sm text-indigo-700">
-              Each employee can receive a performance review
-              for a specific month. The overall rating is
-              automatically calculated from the six KPI ratings.
-            </p>
+              <p className="text-sm">
+                Loading performance reviews...
+              </p>
+            </div>
           </div>
-        </div>
-      </div>
+        )}
 
-      {/* CRUD information */}
-      <div className="rounded-xl border border-gray-200 bg-white p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-gray-900">
-              Review Management
-            </h2>
+        {/* Error */}
+        {!loading && error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-6">
+            <div className="flex flex-col items-center text-center">
+              <p className="font-semibold text-red-800">
+                Unable to load performance reviews
+              </p>
 
-            <p className="mt-1 text-sm text-gray-500">
-              Use the button above to create a new monthly
-              performance review. Existing reviews can be edited
-              from the performance review list.
-            </p>
+              <p className="mt-1 max-w-xl text-sm text-red-700">
+                {error}
+              </p>
+
+              <button
+                type="button"
+                onClick={() => loadReviews()}
+                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Try Again
+              </button>
+            </div>
           </div>
+        )}
 
-          <Edit3 className="hidden h-6 w-6 text-gray-400 sm:block" />
-        </div>
+        {/* Empty */}
+        {!loading &&
+          !error &&
+          filteredReviews.length === 0 && (
+            <div className="rounded-xl border border-gray-200 bg-white px-6 py-16 text-center shadow-sm">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gray-100">
+                <Award className="h-7 w-7 text-gray-400" />
+              </div>
+
+              <h3 className="mt-4 text-lg font-semibold text-gray-900">
+                No performance reviews found
+              </h3>
+
+              <p className="mx-auto mt-2 max-w-md text-sm text-gray-500">
+                {reviews.length === 0
+                  ? 'There are no performance reviews in the backend yet.'
+                  : 'Try changing your search or filters.'}
+              </p>
+
+              {reviews.length === 0 && (
+                <button
+                  type="button"
+                  onClick={openCreateModal}
+                  className="mt-5 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
+                >
+                  <Plus className="h-4 w-4" />
+                  Create First Review
+                </button>
+              )}
+            </div>
+          )}
+
+        {/* Review list */}
+        {!loading &&
+          !error &&
+          filteredReviews.length > 0 && (
+            <div className="space-y-4">
+              {filteredReviews.map((review) => {
+                const isExpanded =
+                  expandedReviewId === review.id;
+
+                const rating = Number(
+                  review.overallRating
+                ) || 0;
+
+                return (
+                  <div
+                    key={review.id}
+                    className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
+                  >
+                    {/* Main row */}
+                    <div className="p-5">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+
+                        <div className="flex min-w-0 items-start gap-4">
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50">
+                            <User className="h-5 w-5 text-indigo-600" />
+                          </div>
+
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h3 className="font-semibold text-gray-900">
+                                Employee{' '}
+                                {review.employeeId}
+                              </h3>
+
+                              <span
+                                className={`rounded-full border px-2.5 py-1 text-xs font-medium ${getStatusClasses(
+                                  review.status
+                                )}`}
+                              >
+                                {review.status}
+                              </span>
+                            </div>
+
+                            <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-gray-500">
+                              <span className="inline-flex items-center gap-1.5">
+                                <CalendarDays className="h-4 w-4" />
+
+                                {formatReviewMonth(
+                                  review.reviewPeriod
+                                )}
+                              </span>
+
+                              <span>
+                                Review ID:{' '}
+                                {review.id}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-5 lg:justify-end">
+                          <div className="text-left lg:text-right">
+                            <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
+                              Overall Rating
+                            </p>
+
+                            <div className="mt-1 flex items-center gap-2">
+                              <Star className="h-5 w-5 fill-amber-400 text-amber-400" />
+
+                              <span className="text-xl font-bold text-gray-900">
+                                {rating.toFixed(2)}
+                              </span>
+
+                              <span className="text-sm text-gray-500">
+                                / 5
+                              </span>
+                            </div>
+
+                            <p className="text-xs text-gray-500">
+                              {getRatingLabel(
+                                rating
+                              )}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openEditModal(
+                                  review
+                                )
+                              }
+                              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                            >
+                              <Edit3 className="h-4 w-4" />
+                              Edit
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedReviewId(
+                                  isExpanded
+                                    ? null
+                                    : review.id
+                                )
+                              }
+                              className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white p-2 text-gray-600 hover:bg-gray-50"
+                              aria-label={
+                                isExpanded
+                                  ? 'Collapse review'
+                                  : 'Expand review'
+                              }
+                            >
+                              {isExpanded ? (
+                                <ChevronUp className="h-4 w-4" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Expanded details */}
+                    {isExpanded && (
+                      <div className="border-t border-gray-200 bg-gray-50 px-5 py-5">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                          {KPI_FIELDS.map(
+                            ({ key, label }) => {
+                              const value =
+                                Number(
+                                  review[key]
+                                ) || 0;
+
+                              return (
+                                <div
+                                  key={key}
+                                  className="rounded-lg border border-gray-200 bg-white p-4"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-sm font-medium text-gray-700">
+                                      {label}
+                                    </span>
+
+                                    <span className="font-semibold text-gray-900">
+                                      {value}/5
+                                    </span>
+                                  </div>
+
+                                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
+                                    <div
+                                      className="h-full rounded-full bg-indigo-500"
+                                      style={{
+                                        width: `${
+                                          (value /
+                                            5) *
+                                          100
+                                        }%`,
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            }
+                          )}
+                        </div>
+
+                        <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                          <div className="rounded-lg border border-gray-200 bg-white p-4">
+                            <h4 className="text-sm font-semibold text-gray-900">
+                              Manager Feedback
+                            </h4>
+
+                            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-600">
+                              {review.managerFeedback ||
+                                'No manager feedback provided.'}
+                            </p>
+                          </div>
+
+                          <div className="rounded-lg border border-gray-200 bg-white p-4">
+                            <h4 className="text-sm font-semibold text-gray-900">
+                              Areas for Improvement
+                            </h4>
+
+                            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-600">
+                              {review.areasForImprovement ||
+                                'No improvement areas provided.'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
       </div>
 
-      {/* Create/Edit Modal */}
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={closeModal}
-          />
+      {/* Create / Edit Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
 
-          <div className="relative flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-5">
+            {/* Modal header */}
+            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
               <div>
                 <h2 className="text-lg font-bold text-gray-900">
-                  {isEditing
+                  {editingReview
                     ? 'Edit Performance Review'
-                    : 'Create Monthly Performance Review'}
+                    : 'Create Performance Review'}
                 </h2>
 
                 <p className="mt-1 text-sm text-gray-500">
-                  {isEditing
-                    ? 'Update the employee performance review.'
-                    : 'Enter the monthly performance information.'}
+                  Monthly employee performance review
                 </p>
               </div>
 
@@ -382,22 +868,26 @@ export default function PerformanceManagementPage({
                 type="button"
                 onClick={closeModal}
                 disabled={saving}
-                className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+                className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:opacity-50"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            {/* Modal Body */}
-            <div className="overflow-y-auto px-6 py-6">
-              <div className="space-y-6">
-                {/* Basic Information */}
+            {/* Modal body */}
+            <form
+              onSubmit={handleSave}
+              className="overflow-y-auto"
+            >
+              <div className="space-y-6 p-6">
+
+                {/* Basic information */}
                 <section>
                   <h3 className="mb-4 text-sm font-semibold text-gray-900">
                     Review Information
                   </h3>
 
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
                       <label className="mb-1.5 block text-sm font-medium text-gray-700">
                         Employee ID
@@ -407,14 +897,14 @@ export default function PerformanceManagementPage({
                         type="text"
                         value={form.employeeId}
                         onChange={(event) =>
-                          updateField(
+                          updateForm(
                             'employeeId',
                             event.target.value
                           )
                         }
-                        placeholder="Example: EMP001"
-                        disabled={saving}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-100"
+                        placeholder="e.g. EMP001"
+                        disabled={!!editingReview}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-100 disabled:text-gray-500"
                       />
                     </div>
 
@@ -427,41 +917,32 @@ export default function PerformanceManagementPage({
                         type="month"
                         value={form.reviewPeriod}
                         onChange={(event) =>
-                          updateField(
+                          updateForm(
                             'reviewPeriod',
                             event.target.value
                           )
                         }
-                        disabled={saving}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-100"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                       />
-
-                      {form.reviewPeriod && (
-                        <p className="mt-1.5 text-xs text-gray-500">
-                          {formatReviewMonth(
-                            form.reviewPeriod
-                          )}
-                        </p>
-                      )}
                     </div>
                   </div>
                 </section>
 
-                {/* KPI Ratings */}
+                {/* KPI ratings */}
                 <section>
                   <div className="mb-4 flex items-center justify-between">
                     <div>
                       <h3 className="text-sm font-semibold text-gray-900">
-                        KPI Ratings
+                        Performance Ratings
                       </h3>
 
                       <p className="mt-1 text-xs text-gray-500">
-                        Rate each area from 1 to 5.
+                        Rate each area from 1 to 5
                       </p>
                     </div>
 
-                    <div className="rounded-lg bg-indigo-50 px-3 py-2 text-center">
-                      <p className="text-xs font-medium text-indigo-600">
+                    <div className="rounded-lg bg-indigo-50 px-4 py-2 text-right">
+                      <p className="text-xs text-indigo-600">
                         Overall Rating
                       </p>
 
@@ -475,172 +956,197 @@ export default function PerformanceManagementPage({
                   </div>
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    {KPI_FIELDS.map((field) => {
-                      const rating = form[field.key];
-
-                      return (
+                    {KPI_FIELDS.map(
+                      ({ key, label }) => (
                         <div
-                          key={field.key}
+                          key={key}
                           className="rounded-xl border border-gray-200 p-4"
                         >
-                          <div className="mb-3">
-                            <p className="text-sm font-semibold text-gray-900">
-                              {field.label}
-                            </p>
+                          <div className="mb-3 flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-700">
+                              {label}
+                            </span>
 
-                            <p className="mt-0.5 text-xs text-gray-500">
-                              {field.description}
-                            </p>
+                            <span className="text-sm font-bold text-indigo-600">
+                              {form[key]}/5
+                            </span>
                           </div>
 
-                          <div className="flex items-center gap-1">
+                          <div className="flex gap-2">
                             {[1, 2, 3, 4, 5].map(
-                              (value) => (
+                              (rating) => (
                                 <button
-                                  key={value}
+                                  key={rating}
                                   type="button"
                                   onClick={() =>
                                     updateKpi(
-                                      field.key,
-                                      value
+                                      key,
+                                      rating
                                     )
                                   }
-                                  disabled={saving}
-                                  className="rounded-md p-1 transition hover:bg-amber-50 disabled:cursor-not-allowed"
-                                  aria-label={`${field.label}: ${value} out of 5`}
+                                  className={`flex h-9 w-9 items-center justify-center rounded-lg border text-sm font-semibold transition ${
+                                    form[key] ===
+                                    rating
+                                      ? 'border-indigo-600 bg-indigo-600 text-white'
+                                      : 'border-gray-300 bg-white text-gray-600 hover:border-indigo-400 hover:text-indigo-600'
+                                  }`}
                                 >
-                                  <Star
-                                    className={`h-6 w-6 ${
-                                      value <= rating
-                                        ? 'fill-amber-400 text-amber-400'
-                                        : 'text-gray-300'
-                                    }`}
-                                  />
+                                  {rating}
                                 </button>
                               )
                             )}
-
-                            <span className="ml-2 text-sm font-semibold text-gray-700">
-                              {rating > 0
-                                ? `${rating}/5`
-                                : 'Not rated'}
-                            </span>
                           </div>
                         </div>
-                      );
-                    })}
+                      )
+                    )}
+                  </div>
+                </section>
+
+                {/* Feedback */}
+                <section>
+                  <h3 className="mb-4 text-sm font-semibold text-gray-900">
+                    Feedback
+                  </h3>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                        Manager Feedback
+                      </label>
+
+                      <textarea
+                        rows={4}
+                        value={form.managerFeedback}
+                        onChange={(event) =>
+                          updateForm(
+                            'managerFeedback',
+                            event.target.value
+                          )
+                        }
+                        placeholder="Enter feedback about the employee's performance..."
+                        className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                        Areas for Improvement
+                      </label>
+
+                      <textarea
+                        rows={4}
+                        value={
+                          form.areasForImprovement
+                        }
+                        onChange={(event) =>
+                          updateForm(
+                            'areasForImprovement',
+                            event.target.value
+                          )
+                        }
+                        placeholder="Describe areas where the employee can improve..."
+                        className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
                   </div>
                 </section>
 
                 {/* Status */}
                 <section>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  <h3 className="mb-4 text-sm font-semibold text-gray-900">
                     Review Status
-                  </label>
+                  </h3>
 
-                  <select
-                    value={form.status}
-                    onChange={(event) =>
-                      updateField(
-                        'status',
-                        event.target.value as
-                          | 'Pending Review'
-                          | 'Completed'
-                      )
-                    }
-                    disabled={saving}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                  >
-                    <option value="Pending Review">
-                      Pending Review
-                    </option>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateForm(
+                          'status',
+                          'Pending Review'
+                        )
+                      }
+                      className={`rounded-xl border p-4 text-left transition ${
+                        form.status ===
+                        'Pending Review'
+                          ? 'border-amber-400 bg-amber-50'
+                          : 'border-gray-200 bg-white hover:border-gray-300'
+                      }`}
+                    >
+                      <p className="font-semibold text-gray-900">
+                        Pending Review
+                      </p>
 
-                    <option value="Completed">
-                      Completed
-                    </option>
-                  </select>
-                </section>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Review is still being finalized
+                      </p>
+                    </button>
 
-                {/* Manager Feedback */}
-                <section>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                    Manager Feedback
-                  </label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateForm(
+                          'status',
+                          'Completed'
+                        )
+                      }
+                      className={`rounded-xl border p-4 text-left transition ${
+                        form.status === 'Completed'
+                          ? 'border-green-400 bg-green-50'
+                          : 'border-gray-200 bg-white hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
 
-                  <textarea
-                    value={form.managerFeedback}
-                    onChange={(event) =>
-                      updateField(
-                        'managerFeedback',
-                        event.target.value
-                      )
-                    }
-                    rows={4}
-                    placeholder="Enter feedback about the employee's performance..."
-                    disabled={saving}
-                    className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-100"
-                  />
-                </section>
+                        <p className="font-semibold text-gray-900">
+                          Completed
+                        </p>
+                      </div>
 
-                {/* Areas for Improvement */}
-                <section>
-                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                    Areas for Improvement
-                  </label>
-
-                  <textarea
-                    value={form.areasForImprovement}
-                    onChange={(event) =>
-                      updateField(
-                        'areasForImprovement',
-                        event.target.value
-                      )
-                    }
-                    rows={4}
-                    placeholder="Describe areas where the employee can improve..."
-                    disabled={saving}
-                    className="w-full resize-none rounded-lg border border-gray-300 px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-100"
-                  />
+                      <p className="mt-1 text-xs text-gray-500">
+                        Review has been completed
+                      </p>
+                    </button>
+                  </div>
                 </section>
               </div>
-            </div>
 
-            {/* Modal Footer */}
-            <div className="flex flex-col-reverse gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={closeModal}
-                disabled={saving}
-                className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
-              >
-                Cancel
-              </button>
+              {/* Modal footer */}
+              <div className="flex items-center justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  disabled={saving}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
 
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={saving}
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {saving ? (
-                  <>
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4" />
-
-                    {isEditing
-                      ? 'Update Review'
-                      : 'Create Review'}
-                  </>
-                )}
-              </button>
-            </div>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      {editingReview
+                        ? 'Update Review'
+                        : 'Create Review'}
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
     </div>
   );
 }
+
