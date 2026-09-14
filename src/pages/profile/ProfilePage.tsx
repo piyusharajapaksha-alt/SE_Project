@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
+import { apiRequest } from '@/services/apiClient';
 import { PageHeader, FormInput, LoadingState } from '@/components/ui';
-import { User, Mail, Phone, MapPin, Briefcase, Calendar, Save, Loader2 } from 'lucide-react';
+import { User, Mail, Phone, Briefcase, Loader2 } from 'lucide-react';
 
 export default function ProfilePage() {
-  const { profile, refreshProfile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const { addToast } = useToast();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -14,27 +15,50 @@ export default function ProfilePage() {
     lastName: profile?.lastName || '',
     email: profile?.email || '',
     phone: profile?.phone || '',
-    department: profile?.department || '',
-    position: profile?.position || '',
   });
 
   if (!profile) return <LoadingState />;
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) return;
+
     setSaving(true);
-    // Simulate save - in production this would call the API
-    await new Promise(r => setTimeout(r, 500));
-    setSaving(false);
-    setEditing(false);
-    addToast('success', 'Profile updated successfully');
-    refreshProfile();
+    try {
+      await apiRequest(`/api/employees/${user.employeeId}`, {
+        method: 'PUT',
+        body: {
+          firstName: form.firstName,
+          lastName: form.lastName,
+          email: form.email,
+          phone: form.phone,
+        },
+      });
+
+      await refreshProfile();
+      setEditing(false);
+      addToast('success', 'Profile updated successfully');
+    } catch (error: any) {
+      addToast('error', error?.message || 'Failed to update profile');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div>
-      <PageHeader title="My Profile" description="View and update your personal information"
-        action={!editing ? <button onClick={() => setEditing(true)} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700">Edit Profile</button> : undefined} />
+      <PageHeader
+        title="My Profile"
+        description="View and update your personal information"
+        action={!editing ? (
+          <button
+            onClick={() => setEditing(true)}
+            className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700"
+          >
+            Edit Profile
+          </button>
+        ) : undefined}
+      />
 
       <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
         <div className="flex flex-col sm:flex-row items-start gap-6">
@@ -70,7 +94,7 @@ export default function ProfilePage() {
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Contact Information</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex items-center gap-3"><Mail className="h-5 w-5 text-gray-400" /><div><p className="text-xs text-gray-500">Email</p><p className="text-sm font-medium text-gray-900">{profile.email}</p></div></div>
-            <div className="flex items-center gap-3"><Phone className="h-5 w-5 text-gray-400" /><div><p className="text-xs text-gray-500">Phone</p><p className="text-sm font-medium text-gray-900">{profile.phone}</p></div></div>
+            <div className="flex items-center gap-3"><Phone className="h-5 w-5 text-gray-400" /><div><p className="text-xs text-gray-500">Phone</p><p className="text-sm font-medium text-gray-900">{profile.phone || 'Not provided'}</p></div></div>
             <div className="flex items-center gap-3"><Briefcase className="h-5 w-5 text-gray-400" /><div><p className="text-xs text-gray-500">Department</p><p className="text-sm font-medium text-gray-900">{profile.department}</p></div></div>
             <div className="flex items-center gap-3"><User className="h-5 w-5 text-gray-400" /><div><p className="text-xs text-gray-500">Position</p><p className="text-sm font-medium text-gray-900">{profile.position}</p></div></div>
           </div>
