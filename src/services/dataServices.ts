@@ -39,19 +39,13 @@ export const attendanceService = {
 
 export const leaveService = {
   getAll: (filters?: Filters) =>
-    empty(
-      apiRequest<any[]>(
-        `/api/leave${queryString(filters)}`
-      ),
-      []
+    apiRequest<any[]>(
+      `/api/leave${queryString(filters)}`
     ),
 
   getBalance: (employeeId: string) =>
-    empty(
-      apiRequest<any>(
-        `/api/leave/balance/${employeeId}`
-      ),
-      null
+    apiRequest<any>(
+      `/api/leave/balance/${employeeId}`
     ),
 
   create: (data: any) =>
@@ -65,7 +59,8 @@ export const leaveService = {
 
   approve: (
     id: string | number,
-    comment = ''
+    comment = '',
+    approverId = ''
   ) =>
     apiRequest<any>(
       `/api/leave/${id}/approve`,
@@ -73,13 +68,15 @@ export const leaveService = {
         method: 'PUT',
         body: {
           comment,
+          approverId,
         },
       }
     ),
 
   reject: (
     id: string | number,
-    comment = ''
+    comment = '',
+    approverId = ''
   ) =>
     apiRequest<any>(
       `/api/leave/${id}/reject`,
@@ -87,13 +84,12 @@ export const leaveService = {
         method: 'PUT',
         body: {
           comment,
+          approverId,
         },
       }
     ),
 
-  cancel: (
-    id: string | number
-  ) =>
+  cancel: (id: string | number) =>
     apiRequest<any>(
       `/api/leave/${id}/cancel`,
       {
