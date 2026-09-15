@@ -225,6 +225,10 @@ export const performanceService = {
 // EVENTS
 // ============================================================
 
+// ============================================================
+// EVENTS
+// ============================================================
+
 export const eventService = {
   getAll: (
     filters?: Filters
@@ -234,10 +238,13 @@ export const eventService = {
     ),
 
   getById: (
-    id: string | number
+    id: string | number,
+    employeeId?: string
   ) =>
     apiRequest<any>(
-      `/api/events/${id}`
+      `/api/events/${id}${queryString({
+        employeeId,
+      })}`
     ),
 
   create: (
@@ -277,7 +284,7 @@ export const eventService = {
     id: string | number,
     employeeId: string
   ) =>
-    apiRequest<any>(
+    apiRequest<void>(
       `/api/events/${id}/register`,
       {
         method: 'POST',
@@ -291,7 +298,7 @@ export const eventService = {
     id: string | number,
     employeeId: string
   ) =>
-    apiRequest<any>(
+    apiRequest<void>(
       `/api/events/${id}/register/${employeeId}`,
       {
         method: 'DELETE',
