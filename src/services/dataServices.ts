@@ -38,12 +38,68 @@ export const attendanceService = {
 };
 
 export const leaveService = {
-  getAll: (filters?: Filters) => empty(apiRequest<any[]>(`/api/leave${queryString(filters)}`), []),
-  getBalance: (employeeId: string) => empty(apiRequest<any>(`/api/leave/balance/${employeeId}`), null),
-  create: (data: any) => apiRequest<any>('/api/leave', { method: 'POST', body: data }),
-  approve: (id: string | number, comment = '') => apiRequest<any>(`/api/leave/${id}/approve`, { method: 'PUT', body: { comment } }),
-  reject: (id: string | number, comment = '') => apiRequest<any>(`/api/leave/${id}/reject`, { method: 'PUT', body: { comment } }),
-  cancel: (id: string | number) => apiRequest<any>(`/api/leave/${id}/cancel`, { method: 'PUT' }),
+  getAll: (filters?: Filters) =>
+    empty(
+      apiRequest<any[]>(
+        `/api/leave${queryString(filters)}`
+      ),
+      []
+    ),
+
+  getBalance: (employeeId: string) =>
+    empty(
+      apiRequest<any>(
+        `/api/leave/balance/${employeeId}`
+      ),
+      null
+    ),
+
+  create: (data: any) =>
+    apiRequest<any>(
+      '/api/leave',
+      {
+        method: 'POST',
+        body: data,
+      }
+    ),
+
+  approve: (
+    id: string | number,
+    comment = ''
+  ) =>
+    apiRequest<any>(
+      `/api/leave/${id}/approve`,
+      {
+        method: 'PUT',
+        body: {
+          comment,
+        },
+      }
+    ),
+
+  reject: (
+    id: string | number,
+    comment = ''
+  ) =>
+    apiRequest<any>(
+      `/api/leave/${id}/reject`,
+      {
+        method: 'PUT',
+        body: {
+          comment,
+        },
+      }
+    ),
+
+  cancel: (
+    id: string | number
+  ) =>
+    apiRequest<any>(
+      `/api/leave/${id}/cancel`,
+      {
+        method: 'PUT',
+      }
+    ),
 };
 
 export const performanceService = {

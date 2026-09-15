@@ -38,7 +38,7 @@ interface MockAuthAccount extends AuthUser {
 const mockAuthAccounts: MockAuthAccount[] = [
   {
     id: 'USR001',
-    email: 'employee@staffhub.com',
+    email: 'tharindu.j@example.com',
     password: 'demo123',
     role: 'Employee',
     employeeId: 'EMP001',
