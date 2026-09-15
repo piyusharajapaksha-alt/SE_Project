@@ -20,20 +20,33 @@ export interface TrainingEmployee {
 
   assignmentStatus?: 'Assigned' | 'Not Assigned';
   registrationStatus?: 'Registered' | 'Not Registered';
-  attendanceStatus?: 'Present' | 'Absent' | 'Pending';
-  completionStatus?: 'Completed' | 'Not Completed' | 'Pending';
+
+  attendanceStatus?:
+    | 'Present'
+    | 'Absent'
+    | 'Pending';
+
+  completionStatus?:
+    | 'Completed'
+    | 'Not Completed'
+    | 'Pending';
 }
 
 export interface TrainingProgram {
   id: string;
+
   title: string;
   description: string;
+
   trainer: string;
   category: string;
+
   startDate: string;
   endDate?: string;
+
   location: string;
   capacity: number;
+
   trainingFor: string[];
 
   status: TrainingStatus;
@@ -52,40 +65,78 @@ export interface TrainingProgram {
   >;
 }
 
+
 /* =========================================================
-   BACKEND API RESPONSE
+   BACKEND TYPES
    ========================================================= */
 
 interface TrainingApiResponse {
   id: number | string;
+
   title: string;
   description: string;
+
   trainer: string;
   category: string;
+
   startDate: string;
   endDate?: string | null;
+
   location: string;
   capacity: number;
+
   trainingFor: string[];
+
   status: TrainingStatus;
+
+  assignedEmployeeIds?: string[];
+  registeredEmployeeIds?: string[];
+
+  attendance?: Record<
+    string,
+    'Present' | 'Absent' | 'Pending'
+  >;
+
+  completion?: Record<
+    string,
+    'Completed' | 'Not Completed' | 'Pending'
+  >;
 }
 
+
 /* =========================================================
-   HELPER FUNCTIONS
+   EMPLOYEE API TYPE
    ========================================================= */
 
-/**
- * Convert backend training data into the structure
- * expected by the current React Training UI.
- */
+interface EmployeeApiResponse {
+  id?: number | string;
+
+  employeeNumber?: string;
+
+  firstName?: string;
+  lastName?: string;
+
+  email?: string;
+
+  department?: string;
+  position?: string;
+}
+
+
+/* =========================================================
+   HELPERS
+   ========================================================= */
+
 const mapTrainingProgram = (
   program: TrainingApiResponse
 ): TrainingProgram => {
+
   return {
     id: String(program.id),
 
     title: program.title ?? '',
     description: program.description ?? '',
+
     trainer: program.trainer ?? '',
     category: program.category ?? '',
 
@@ -95,29 +146,37 @@ const mapTrainingProgram = (
     location: program.location ?? '',
     capacity: Number(program.capacity ?? 0),
 
-    status: program.status ?? 'Upcoming',
+    trainingFor:
+      Array.isArray(program.trainingFor)
+        ? program.trainingFor
+        : [],
 
-    /*
-     * These fields are not available from the
-     * current backend API yet.
-     *
-     * Keep them empty until backend APIs are added.
-     */
-    trainingFor: Array.isArray(program.trainingFor)
-      ? program.trainingFor
-      : [],
+    status:
+      program.status ?? 'Upcoming',
 
-    assignedEmployeeIds: [],
-    registeredEmployeeIds: [],
+    assignedEmployeeIds:
+      Array.isArray(
+        program.assignedEmployeeIds
+      )
+        ? program.assignedEmployeeIds
+        : [],
 
-    attendance: {},
-    completion: {},
+    registeredEmployeeIds:
+      Array.isArray(
+        program.registeredEmployeeIds
+      )
+        ? program.registeredEmployeeIds
+        : [],
+
+    attendance:
+      program.attendance ?? {},
+
+    completion:
+      program.completion ?? {},
   };
 };
 
-/**
- * Calculate values used by the existing UI.
- */
+
 const enrichProgram = (
   program: TrainingProgram
 ): TrainingProgram & {
@@ -126,24 +185,28 @@ const enrichProgram = (
   notRegisteredCount: number;
   availableSeats: number;
 } => {
+
   const registeredCount =
     program.registeredEmployeeIds.length;
 
   const assignedCount =
     program.assignedEmployeeIds.length;
 
-  const availableSeats = Math.max(
-    0,
-    program.capacity - registeredCount
-  );
+  const availableSeats =
+    Math.max(
+      0,
+      program.capacity - registeredCount
+    );
 
-  const notRegisteredCount = Math.max(
-    0,
-    program.capacity - registeredCount
-  );
+  const notRegisteredCount =
+    Math.max(
+      0,
+      program.capacity - registeredCount
+    );
 
   return {
     ...program,
+
     registeredCount,
     assignedCount,
     notRegisteredCount,
@@ -151,13 +214,15 @@ const enrichProgram = (
   };
 };
 
+
 /* =========================================================
    TRAINING SERVICE
    ========================================================= */
 
 export const trainingService = {
+
   /* =======================================================
-     GET ALL TRAINING PROGRAMS
+     GET ALL
      ======================================================= */
 
   async getAll(
@@ -167,106 +232,105 @@ export const trainingService = {
       status?: string;
     }
   ): Promise<TrainingProgram[]> {
-    try {
-      const response =
-        await apiRequest<TrainingApiResponse[]>(
-          '/api/training'
-        );
 
-      let programs = response.map(
-        mapTrainingProgram
+    const response =
+      await apiRequest<TrainingApiResponse[]>(
+        '/api/training'
       );
 
-      /* -----------------------------------------------
-         FRONTEND SEARCH
-         ----------------------------------------------- */
+    let programs =
+      response.map(mapTrainingProgram);
 
-      const search =
-        filters?.search?.trim().toLowerCase() || '';
 
-      if (search) {
-        programs = programs.filter((program) => {
-          return (
+    const search =
+      filters?.search
+        ?.trim()
+        .toLowerCase() || '';
+
+
+    if (search) {
+
+      programs =
+        programs.filter(
+          (program) =>
             program.title
               .toLowerCase()
               .includes(search) ||
+
             program.description
               .toLowerCase()
               .includes(search) ||
+
             program.trainer
               .toLowerCase()
               .includes(search) ||
+
             program.category
               .toLowerCase()
               .includes(search) ||
+
             program.location
               .toLowerCase()
               .includes(search)
-          );
-        });
-      }
+        );
+    }
 
-      /* -----------------------------------------------
-         CATEGORY FILTER
-         ----------------------------------------------- */
 
-      if (
-        filters?.category &&
-        filters.category !== 'All'
-      ) {
-        programs = programs.filter(
+    if (
+      filters?.category &&
+      filters.category !== 'All'
+    ) {
+
+      programs =
+        programs.filter(
           (program) =>
             program.category ===
             filters.category
         );
-      }
+    }
 
-      /* -----------------------------------------------
-         STATUS FILTER
-         ----------------------------------------------- */
 
-      if (
-        filters?.status &&
-        filters.status !== 'All'
-      ) {
-        programs = programs.filter(
+    if (
+      filters?.status &&
+      filters.status !== 'All'
+    ) {
+
+      programs =
+        programs.filter(
           (program) =>
             program.status ===
             filters.status
         );
-      }
-
-      return programs.map(enrichProgram);
-    } catch (error) {
-      console.error(
-        'Failed to load training programs:',
-        error
-      );
-
-      throw error;
     }
+
+
+    return programs.map(enrichProgram);
   },
 
+
   /* =======================================================
-     GET TRAINING PROGRAM BY ID
+     GET BY ID
      ======================================================= */
 
   async getById(
     id: string | number
   ): Promise<TrainingProgram | null> {
+
     try {
+
       const response =
         await apiRequest<TrainingApiResponse>(
           `/api/training/${id}`
         );
 
-      const program =
-        mapTrainingProgram(response);
+      return enrichProgram(
+        mapTrainingProgram(response)
+      );
 
-      return enrichProgram(program);
     } catch (error) {
+
       console.error(
-        `Failed to load training program ${id}:`,
+        `Failed to load training ${id}:`,
         error
       );
 
@@ -274,8 +338,9 @@ export const trainingService = {
     }
   },
 
+
   /* =======================================================
-     CREATE TRAINING PROGRAM
+     CREATE
      ======================================================= */
 
   async create(
@@ -288,84 +353,82 @@ export const trainingService = {
       | 'completion'
     >
   ): Promise<TrainingProgram> {
-    try {
-      const response =
-        await apiRequest<TrainingApiResponse>(
-          '/api/training',
-          {
-            method: 'POST',
-            body: {
-              title: payload.title,
-              description: payload.description,
-              trainer: payload.trainer,
-              category: payload.category,
-              startDate: payload.startDate,
-              endDate: payload.endDate || null,
-              location: payload.location,
-              capacity: payload.capacity,
-              trainingFor: payload.trainingFor,
-              status: payload.status,
-            },
-          }
-        );
 
-      const createdProgram =
-        mapTrainingProgram(response);
+    const response =
+      await apiRequest<TrainingApiResponse>(
+        '/api/training',
+        {
+          method: 'POST',
 
-      return enrichProgram(createdProgram);
-    } catch (error) {
-      console.error(
-        'Failed to create training program:',
-        error
+          body: {
+            title: payload.title,
+            description: payload.description,
+            trainer: payload.trainer,
+            category: payload.category,
+
+            startDate: payload.startDate,
+            endDate:
+              payload.endDate || null,
+
+            location: payload.location,
+            capacity: payload.capacity,
+
+            trainingFor:
+              payload.trainingFor,
+
+            status: payload.status,
+          },
+        }
       );
 
-      throw error;
-    }
+    return enrichProgram(
+      mapTrainingProgram(response)
+    );
   },
 
+
   /* =======================================================
-     UPDATE TRAINING PROGRAM
+     UPDATE
      ======================================================= */
 
   async update(
     id: string,
     payload: Partial<TrainingProgram>
   ): Promise<TrainingProgram> {
-    try {
-      const response =
-        await apiRequest<TrainingApiResponse>(
-          `/api/training/${id}`,
-          {
-            method: 'PUT',
-            body: {
-              title: payload.title,
-              description: payload.description,
-              trainer: payload.trainer,
-              category: payload.category,
-              startDate: payload.startDate,
-              endDate: payload.endDate || null,
-              location: payload.location,
-              capacity: payload.capacity,
-              trainingFor:
-                payload.trainingFor || [],
-              status: payload.status,
-            },
-          }
-        );
 
-      const updatedProgram =
-        mapTrainingProgram(response);
+    const response =
+      await apiRequest<TrainingApiResponse>(
+        `/api/training/${id}`,
+        {
+          method: 'PUT',
 
-      return enrichProgram(updatedProgram);
-    } catch (error) {
-      console.error(
-        `Failed to update training program ${id}:`,
-        error
+          body: {
+            title: payload.title,
+            description: payload.description,
+            trainer: payload.trainer,
+            category: payload.category,
+
+            startDate: payload.startDate,
+
+            endDate:
+              payload.endDate || null,
+
+            location: payload.location,
+            capacity: payload.capacity,
+
+            trainingFor:
+              payload.trainingFor || [],
+
+            status: payload.status,
+          },
+        }
       );
 
-      throw error;
-    }
+    return enrichProgram(
+      mapTrainingProgram(response)
+    );
   },
+
 
   /* =======================================================
      DELETE
@@ -374,112 +437,203 @@ export const trainingService = {
   async delete(
     id: string
   ): Promise<void> {
-    /*
-     * Backend DELETE endpoint has not been implemented yet.
-     *
-     * Do NOT keep local/mock deletion here.
-     *
-     * This method is kept so TrainingPage.tsx
-     * does not produce a TypeScript error.
-     */
-    console.warn(
-      `Training delete API is not implemented yet. ID: ${id}`
+
+    await apiRequest<void>(
+      `/api/training/${id}`,
+      {
+        method: 'DELETE',
+      }
     );
   },
 
+
   /* =======================================================
-     EMPLOYEE METHODS
+     GET ALL EMPLOYEES
      ======================================================= */
 
-  /**
-   * Employee assignment API has not been implemented yet.
-   *
-   * Return an empty array instead of using mock/local data.
-   */
-  async getAllEmployees(): Promise<TrainingEmployee[]> {
-    return [];
+  async getAllEmployees(): Promise<
+    TrainingEmployee[]
+  > {
+
+    const response =
+      await apiRequest<EmployeeApiResponse[]>(
+        '/api/employees'
+      );
+
+    return response.map(
+      (employee) => {
+
+        const employeeNumber =
+          employee.employeeNumber ??
+          String(employee.id ?? '');
+
+        return {
+          /*
+           * IMPORTANT:
+           * Use employeeNumber as the ID because
+           * Training assignment and registration
+           * use EMP001 / EMP002 style IDs.
+           */
+          id: employeeNumber,
+
+          employeeNumber,
+
+          name:
+            `${employee.firstName ?? ''} ${
+              employee.lastName ?? ''
+            }`.trim(),
+
+          department:
+            employee.department ?? '',
+
+          position:
+            employee.position ?? '',
+
+          email:
+            employee.email ?? '',
+        };
+      }
+    );
   },
 
-  /**
-   * Employee assignment API has not been implemented yet.
-   *
-   * Return an empty array instead of using local/mock data.
-   */
+
+  /* =======================================================
+     GET ASSIGNED EMPLOYEES
+     ======================================================= */
+
   async getEmployees(
-    _trainingId: string
+    trainingId: string
   ): Promise<TrainingEmployee[]> {
-    return [];
+
+    const response =
+      await apiRequest<any[]>(
+        `/api/training/${trainingId}/employees`
+      );
+
+    return response.map(
+      (employee) => {
+
+        const employeeNumber =
+          String(
+            employee.employee_number ??
+            employee.employeeNumber ??
+            employee.id ??
+            ''
+          );
+
+        return {
+          id: employeeNumber,
+
+          employeeNumber,
+
+          name:
+            employee.name ??
+            `${employee.first_name ?? ''} ${
+              employee.last_name ?? ''
+            }`.trim(),
+
+          department:
+            employee.department ?? '',
+
+          position:
+            employee.position ?? '',
+
+          email:
+            employee.email ?? '',
+
+          assignmentStatus:
+            employee.assignment_status ??
+            employee.assignmentStatus ??
+            'Assigned',
+
+          registrationStatus:
+            employee.registration_status ??
+            employee.registrationStatus ??
+            'Not Registered',
+        };
+      }
+    );
   },
+
 
   /* =======================================================
      ASSIGN EMPLOYEES
      ======================================================= */
 
   async assignEmployees(
-    _trainingId: string,
-    _employeeIds: string[]
+    trainingId: string,
+    employeeIds: string[]
   ): Promise<void> {
-    /*
-     * Backend assignment API is not implemented yet.
-     *
-     * Do nothing for now.
-     */
-    console.warn(
-      'Training employee assignment API is not implemented yet.'
+
+    await apiRequest<void>(
+      `/api/training/${trainingId}/employees`,
+      {
+        method: 'POST',
+
+        body: employeeIds,
+      }
     );
   },
+
 
   /* =======================================================
      REMOVE ASSIGNMENT
      ======================================================= */
 
   async removeAssignment(
-    _trainingId: string,
-    _employeeId: string
+    trainingId: string,
+    employeeId: string
   ): Promise<void> {
-    /*
-     * Backend assignment API is not implemented yet.
-     *
-     * Do nothing for now.
-     */
-    console.warn(
-      'Training employee removal API is not implemented yet.'
+
+    await apiRequest<void>(
+      `/api/training/${trainingId}/employees/${encodeURIComponent(
+        employeeId
+      )}`,
+      {
+        method: 'DELETE',
+      }
     );
   },
 
+
   /* =======================================================
-     REGISTRATION
+     REGISTER
      ======================================================= */
 
   async register(
-    _trainingId: string,
-    _employeeId: string
+    trainingId: string,
+    employeeId: string
   ): Promise<void> {
-    /*
-     * Backend registration API is not implemented yet.
-     *
-     * Do nothing for now.
-     */
-    console.warn(
-      'Training registration API is not implemented yet.'
+
+    await apiRequest<void>(
+      `/api/training/${trainingId}/register`,
+      {
+        method: 'POST',
+
+        body: {
+          employeeId,
+        },
+      }
     );
   },
+
 
   /* =======================================================
      UNREGISTER
      ======================================================= */
 
   async unregister(
-    _trainingId: string,
-    _employeeId: string
+    trainingId: string,
+    employeeId: string
   ): Promise<void> {
-    /*
-     * Backend registration API is not implemented yet.
-     *
-     * Do nothing for now.
-     */
-    console.warn(
-      'Training unregistration API is not implemented yet.'
+
+    await apiRequest<void>(
+      `/api/training/${trainingId}/register/${encodeURIComponent(
+        employeeId
+      )}`,
+      {
+        method: 'DELETE',
+      }
     );
   },
 };
