@@ -308,6 +308,21 @@ export default function PerformancePage() {
 
   /*
    * ============================================================
+   * REVIEW FORM FILTERING
+   * ============================================================
+   */
+
+  const [formDepartment, setFormDepartment] =
+    useState('All');
+
+  const [availableEmployees, setAvailableEmployees] =
+    useState<Employee[]>([]);
+
+  const [availableEmployeesLoading, setAvailableEmployeesLoading] =
+    useState(false);
+
+  /*
+   * ============================================================
    * LOAD PERFORMANCE REVIEWS
    * ============================================================
    */
@@ -327,6 +342,7 @@ export default function PerformancePage() {
       /*
        * Employees can only see their own reviews.
        */
+
       if (
         isEmployeeView &&
         user?.employeeId
@@ -359,7 +375,7 @@ export default function PerformancePage() {
 
   /*
    * ============================================================
-   * LOAD EMPLOYEES FOR MANAGEMENT FORM
+   * LOAD EMPLOYEES
    * ============================================================
    */
 
@@ -399,6 +415,139 @@ export default function PerformancePage() {
   useEffect(() => {
     loadEmployees();
   }, [isManagementView]);
+
+  /*
+   * ============================================================
+   * DEPARTMENTS FOR REVIEW FORM
+   *
+   * These are dynamically generated from backend employees.
+   * No departments are hardcoded.
+   * ============================================================
+   */
+
+  const formDepartments = useMemo(() => {
+    const departments = employees
+      .map((employee) =>
+        employee.department?.trim()
+      )
+      .filter(
+        (
+          department
+        ): department is string =>
+          Boolean(department)
+      );
+
+    return Array.from(
+      new Set(departments)
+    ).sort((a, b) =>
+      a.localeCompare(b)
+    );
+  }, [employees]);
+
+  /*
+   * ============================================================
+   * LOAD AVAILABLE EMPLOYEES FOR SELECTED MONTH + DEPARTMENT
+   *
+   * Backend automatically removes employees who already
+   * have a review for the selected month.
+   * ============================================================
+   */
+
+  const loadAvailableEmployees = async (
+    reviewPeriod: string,
+    department: string
+  ) => {
+    if (!reviewPeriod || editingReview) {
+      setAvailableEmployees([]);
+      return;
+    }
+
+    setAvailableEmployeesLoading(true);
+
+    try {
+      const data =
+        await performanceService.getAvailableEmployees(
+          reviewPeriod,
+          department
+        );
+
+      setAvailableEmployees(
+        Array.isArray(data)
+          ? data
+          : []
+      );
+    } catch (err) {
+      console.error(
+        'Failed to load available employees:',
+        err
+      );
+
+      setAvailableEmployees([]);
+    } finally {
+      setAvailableEmployeesLoading(false);
+    }
+  };
+
+  /*
+   * ============================================================
+   * WHEN MONTH OR DEPARTMENT CHANGES
+   * ============================================================
+   */
+
+  useEffect(() => {
+    if (
+      !showForm ||
+      editingReview ||
+      !isManagementView
+    ) {
+      return;
+    }
+
+    loadAvailableEmployees(
+      form.reviewPeriod,
+      formDepartment
+    );
+  }, [
+    showForm,
+    editingReview,
+    isManagementView,
+    form.reviewPeriod,
+    formDepartment,
+  ]);
+
+  /*
+   * If the currently selected employee disappears because
+   * month/department changed, clear the employee selection.
+   */
+
+  useEffect(() => {
+    if (
+      !showForm ||
+      editingReview ||
+      !form.employeeId
+    ) {
+      return;
+    }
+
+    const stillAvailable =
+      availableEmployees.some(
+        (employee) =>
+          getEmployeeId(employee) ===
+          form.employeeId
+      );
+
+    if (!stillAvailable) {
+      setForm((previous) => ({
+        ...previous,
+        employeeId: '',
+      }));
+    }
+  }, [
+    availableEmployees,
+    form.employeeId,
+    showForm,
+    editingReview,
+  ]);
 
   /*
    * ============================================================
@@ -510,14 +659,19 @@ export default function PerformancePage() {
     setActionError('');
     setEditingReview(null);
 
+    const currentMonth =
+      new Date()
+        .toISOString()
+        .slice(0, 7);
+
     setForm({
       ...emptyForm,
       employeeId: '',
-      reviewPeriod:
-        new Date()
-          .toISOString()
-          .slice(0, 7),
+      reviewPeriod: currentMonth,
     });
+
+    setFormDepartment('All');
+    setAvailableEmployees([]);
 
     setShowForm(true);
   };
@@ -527,6 +681,25 @@ export default function PerformancePage() {
   ) => {
     setActionError('');
     setEditingReview(review);
+
+    /*
+     * Find employee department so the department field
+     * can show the correct department during edit.
+     */
+    const matchingEmployee =
+      employees.find(
+        (employee) =>
+          getEmployeeId(employee) ===
+          review.employeeId
+      );
+
+    setFormDepartment(
+      matchingEmployee?.department ||
+        review.department ||
+        'All'
+    );
+
+    setAvailableEmployees([]);
 
     setForm({
       employeeId:
@@ -573,6 +746,8 @@ export default function PerformancePage() {
 
     setShowForm(false);
     setEditingReview(null);
+    setAvailableEmployees([]);
+    setFormDepartment('All');
     setActionError('');
   };
 
@@ -601,16 +776,16 @@ export default function PerformancePage() {
   const handleSave = async () => {
     setActionError('');
 
-    if (!form.employeeId) {
+    if (!form.reviewPeriod) {
       setActionError(
-        'Please select an employee.'
+        'Please select a review month.'
       );
       return;
     }
 
-    if (!form.reviewPeriod) {
+    if (!form.employeeId) {
       setActionError(
-        'Please select a review month.'
+        'Please select an employee.'
       );
       return;
     }
@@ -1259,14 +1434,165 @@ export default function PerformancePage() {
               )}
 
               <div className="space-y-6">
-                {/* EMPLOYEE + MONTH */}
+                {/* ==================================================
+                    REVIEW MONTH + DEPARTMENT
+                ================================================== */}
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  {/* REVIEW MONTH */}
+
                   <div>
                     <label className="mb-2 block text-sm font-medium text-gray-700">
-                      Employee
+                      Review Month
                     </label>
 
+                    <input
+                      type="month"
+                      value={
+                        form.reviewPeriod
+                      }
+                      onChange={(event) => {
+                        const newMonth =
+                          event.target.value;
+
+                        setForm(
+                          (previous) => ({
+                            ...previous,
+                            reviewPeriod:
+                              newMonth,
+                            employeeId:
+                              editingReview
+                                ? previous.employeeId
+                                : '',
+                          })
+                        );
+                      }}
+                      disabled={saving}
+                      className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-100"
+                    />
+
+                    {!editingReview && (
+                      <p className="mt-1.5 text-xs text-gray-500">
+                        Choose the month before selecting an employee.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* DEPARTMENT */}
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                      Department
+                    </label>
+
+                    <select
+                      value={
+                        formDepartment
+                      }
+                      onChange={(event) => {
+                        const department =
+                          event.target.value;
+
+                        setFormDepartment(
+                          department
+                        );
+
+                        if (!editingReview) {
+                          setForm(
+                            (previous) => ({
+                              ...previous,
+                              employeeId:
+                                '',
+                            })
+                          );
+                        }
+                      }}
+                      disabled={
+                        saving ||
+                        Boolean(
+                          editingReview
+                        )
+                      }
+                      className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-100"
+                    >
+                      <option value="All">
+                        All Departments
+                      </option>
+
+                      {formDepartments.map(
+                        (department) => (
+                          <option
+                            key={
+                              department
+                            }
+                            value={
+                              department
+                            }
+                          >
+                            {department}
+                          </option>
+                        )
+                      )}
+                    </select>
+
+                    {editingReview && (
+                      <p className="mt-1.5 text-xs text-gray-500">
+                        Department is locked while editing a review.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* ==================================================
+                    EMPLOYEE
+                ================================================== */}
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Employee
+                  </label>
+
+                  {editingReview ? (
+                    /*
+                     * EDIT MODE
+                     *
+                     * We show the existing employee and keep it
+                     * locked because the backend has already
+                     * created this review for this employee.
+                     */
+                    <select
+                      value={
+                        form.employeeId
+                      }
+                      disabled
+                      className="h-10 w-full rounded-lg border border-gray-300 bg-gray-100 px-3 text-sm text-gray-900 outline-none"
+                    >
+                      <option
+                        value={
+                          form.employeeId
+                        }
+                      >
+                        {(() => {
+                          const employee =
+                            employees.find(
+                              (item) =>
+                                getEmployeeId(
+                                  item
+                                ) ===
+                                form.employeeId
+                            );
+
+                          if (employee) {
+                            return `${getEmployeeName(
+                              employee
+                            )} (${form.employeeId})`;
+                          }
+
+                          return form.employeeId;
+                        })()}
+                      </option>
+                    </select>
+                  ) : (
                     <select
                       value={
                         form.employeeId
@@ -1283,77 +1609,85 @@ export default function PerformancePage() {
                       }
                       disabled={
                         saving ||
-                        employeesLoading ||
-                        Boolean(
-                          editingReview
-                        )
+                        availableEmployeesLoading ||
+                        !form.reviewPeriod
                       }
                       className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-100"
                     >
                       <option value="">
-                        {employeesLoading
-                          ? 'Loading employees...'
-                          : 'Select employee'}
+                        {availableEmployeesLoading
+                          ? 'Loading available employees...'
+                          : availableEmployees.length ===
+                              0
+                            ? 'No employees available'
+                            : 'Select employee'}
                       </option>
 
-                      {employees.map(
+                      {availableEmployees.map(
                         (employee) => {
-                          const id =
-                            getEmployeeId(
-                              employee
+                          const employeeId =
+                            employee.employeeNumber ||
+                            employee.employeeId ||
+                            String(
+                              employee.id ??
+                                ''
                             );
+
+                          const employeeName =
+                            `${employee.firstName || ''} ${
+                              employee.lastName || ''
+                            }`.trim() ||
+                            employee.name ||
+                            employeeId;
 
                           return (
                             <option
-                              key={id}
-                              value={id}
+                              key={
+                                employeeId
+                              }
+                              value={
+                                employeeId
+                              }
                             >
-                              {getEmployeeName(
-                                employee
-                              )}{' '}
-                              — {id}
+                              {employeeName} (
+                              {employeeId})
                             </option>
                           );
                         }
                       )}
                     </select>
+                  )}
 
-                    {employees.length ===
-                      0 &&
-                      !employeesLoading && (
-                        <p className="mt-1 text-xs text-red-500">
-                          No employees were returned by the backend.
+                  {!editingReview && (
+                    <>
+                      {availableEmployeesLoading ? (
+                        <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
+                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                          Checking employees for this review month...
+                        </div>
+                      ) : availableEmployees.length >
+                        0 ? (
+                        <p className="mt-1.5 text-xs text-gray-500">
+                          Employees who already have a review for{' '}
+                          <span className="font-medium text-gray-700">
+                            {formatMonth(
+                              form.reviewPeriod
+                            )}
+                          </span>{' '}
+                          are automatically hidden.
+                        </p>
+                      ) : (
+                        <p className="mt-1.5 text-xs text-amber-600">
+                          No employees are available for this month and department.
                         </p>
                       )}
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-700">
-                      Review Month
-                    </label>
-
-                    <input
-                      type="month"
-                      value={
-                        form.reviewPeriod
-                      }
-                      onChange={(event) =>
-                        setForm(
-                          (previous) => ({
-                            ...previous,
-                            reviewPeriod:
-                              event.target
-                                .value,
-                          })
-                        )
-                      }
-                      disabled={saving}
-                      className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-100"
-                    />
-                  </div>
+                    </>
+                  )}
                 </div>
 
-                {/* RATINGS */}
+                {/* ==================================================
+                    RATINGS
+                ================================================== */}
 
                 <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-5">
                   <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1447,7 +1781,9 @@ export default function PerformancePage() {
                   </div>
                 </div>
 
-                {/* STATUS */}
+                {/* ==================================================
+                    STATUS
+                ================================================== */}
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700">
@@ -1481,7 +1817,9 @@ export default function PerformancePage() {
                   </select>
                 </div>
 
-                {/* FEEDBACK */}
+                {/* ==================================================
+                    FEEDBACK
+                ================================================== */}
 
                 <div className="grid grid-cols-1 gap-4">
                   <div>
@@ -1808,7 +2146,9 @@ export default function PerformancePage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setDeleteConfirmation(null);
+                    setDeleteConfirmation(
+                      null
+                    );
                     setActionError('');
                   }}
                   disabled={

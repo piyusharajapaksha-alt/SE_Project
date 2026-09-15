@@ -31,6 +31,24 @@ export interface PerformanceReview
   updatedAt?: string;
 }
 
+export interface AvailableReviewEmployee {
+  id: number;
+  employeeNumber: string;
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone?: string;
+  department?: string;
+  position?: string;
+  role?: string;
+  employmentStatus?: string;
+  hireDate?: string;
+  address?: string;
+  emergencyContact?: string;
+  salary?: number;
+  gender?: string;
+}
+
 export const performanceService = {
 
   // ============================================================
@@ -44,7 +62,6 @@ export const performanceService = {
     );
   },
 
-
   // ============================================================
   // READ ONE
   // ============================================================
@@ -57,7 +74,6 @@ export const performanceService = {
       `/api/performance/${id}`
     );
   },
-
 
   // ============================================================
   // READ BY EMPLOYEE
@@ -74,6 +90,36 @@ export const performanceService = {
     );
   },
 
+  // ============================================================
+  // GET AVAILABLE EMPLOYEES
+  // ============================================================
+
+  async getAvailableEmployees(
+    reviewPeriod: string,
+    department?: string
+  ): Promise<AvailableReviewEmployee[]> {
+
+    const params = new URLSearchParams();
+
+    params.set(
+      'reviewPeriod',
+      reviewPeriod
+    );
+
+    if (
+      department &&
+      department !== 'All'
+    ) {
+      params.set(
+        'department',
+        department
+      );
+    }
+
+    return apiRequest<AvailableReviewEmployee[]>(
+      `/api/performance/available-employees?${params.toString()}`
+    );
+  },
 
   // ============================================================
   // CREATE
@@ -83,13 +129,6 @@ export const performanceService = {
     data: PerformanceReviewPayload
   ): Promise<PerformanceReview> {
 
-    /*
-     * IMPORTANT:
-     * apiRequest() already calls JSON.stringify()
-     * internally.
-     *
-     * Therefore we MUST pass the object directly.
-     */
     return apiRequest<PerformanceReview>(
       '/api/performance',
       {
@@ -98,7 +137,6 @@ export const performanceService = {
       }
     );
   },
-
 
   // ============================================================
   // UPDATE
@@ -109,10 +147,6 @@ export const performanceService = {
     data: PerformanceReviewPayload
   ): Promise<PerformanceReview> {
 
-    /*
-     * Same rule as CREATE:
-     * do not JSON.stringify here.
-     */
     return apiRequest<PerformanceReview>(
       `/api/performance/${id}`,
       {
@@ -121,7 +155,6 @@ export const performanceService = {
       }
     );
   },
-
 
   // ============================================================
   // DELETE
@@ -139,3 +172,4 @@ export const performanceService = {
     );
   },
 };
+
