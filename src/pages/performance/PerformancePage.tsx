@@ -174,10 +174,7 @@ const getRating = (review: PerformanceReview) => {
 };
 
 const calculateOverallRating = (
-  values: Pick<
-    PerformanceReview,
-    RatingKey
-  >
+  values: Pick<PerformanceReview, RatingKey>
 ) => {
   const total = ratingItems.reduce(
     (sum, item) =>
@@ -185,7 +182,9 @@ const calculateOverallRating = (
     0
   );
 
-  return Number((total / ratingItems.length).toFixed(2));
+  return Number(
+    (total / ratingItems.length).toFixed(2)
+  );
 };
 
 function RatingStars({
@@ -270,12 +269,16 @@ export default function PerformancePage() {
   );
 
   const [loading, setLoading] = useState(true);
+
   const [employeesLoading, setEmployeesLoading] =
     useState(false);
 
   const [error, setError] = useState('');
 
+  const [actionError, setActionError] = useState('');
+
   const [search, setSearch] = useState('');
+
   const [statusFilter, setStatusFilter] =
     useState('All');
 
@@ -299,6 +302,9 @@ export default function PerformancePage() {
 
   const [deletingId, setDeletingId] =
     useState<number | null>(null);
+
+  const [deleteConfirmation, setDeleteConfirmation] =
+    useState<PerformanceReview | null>(null);
 
   /*
    * ============================================================
@@ -501,6 +507,7 @@ export default function PerformancePage() {
    */
 
   const openCreateForm = () => {
+    setActionError('');
     setEditingReview(null);
 
     setForm({
@@ -518,6 +525,7 @@ export default function PerformancePage() {
   const openEditForm = (
     review: PerformanceReview
   ) => {
+    setActionError('');
     setEditingReview(review);
 
     setForm({
@@ -565,6 +573,7 @@ export default function PerformancePage() {
 
     setShowForm(false);
     setEditingReview(null);
+    setActionError('');
   };
 
   const updateRating = (
@@ -590,15 +599,17 @@ export default function PerformancePage() {
    */
 
   const handleSave = async () => {
+    setActionError('');
+
     if (!form.employeeId) {
-      window.alert(
+      setActionError(
         'Please select an employee.'
       );
       return;
     }
 
     if (!form.reviewPeriod) {
-      window.alert(
+      setActionError(
         'Please select a review month.'
       );
       return;
@@ -665,7 +676,7 @@ export default function PerformancePage() {
         err
       );
 
-      window.alert(
+      setActionError(
         err instanceof Error
           ? err.message
           : 'Unable to save performance review.'
@@ -684,18 +695,18 @@ export default function PerformancePage() {
   const handleDelete = async (
     review: PerformanceReview
   ) => {
-    const confirmed =
-      window.confirm(
-        `Delete the performance review for ${getReviewEmployeeName(
-          review
-        )} (${formatMonth(
-          review.reviewPeriod
-        )})?\n\nThis action cannot be undone.`
-      );
+    setActionError('');
+    setDeleteConfirmation(review);
+  };
 
-    if (!confirmed) return;
+  const confirmDelete = async () => {
+    if (!deleteConfirmation) return;
+
+    const review =
+      deleteConfirmation;
 
     setDeletingId(review.id);
+    setActionError('');
 
     try {
       await performanceService.delete(
@@ -715,6 +726,8 @@ export default function PerformancePage() {
         setExpandedId(null);
       }
 
+      setDeleteConfirmation(null);
+
       await loadData();
     } catch (err) {
       console.error(
@@ -722,11 +735,13 @@ export default function PerformancePage() {
         err
       );
 
-      window.alert(
+      setActionError(
         err instanceof Error
           ? err.message
           : 'Unable to delete performance review.'
       );
+
+      setDeleteConfirmation(null);
     } finally {
       setDeletingId(null);
     }
@@ -1216,6 +1231,33 @@ export default function PerformancePage() {
             {/* MODAL BODY */}
 
             <div className="overflow-y-auto px-6 py-6">
+              {/* ACTION ERROR */}
+
+              {actionError && (
+                <div className="mb-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-red-800">
+                      Unable to save review
+                    </p>
+
+                    <p className="mt-1 text-sm text-red-600">
+                      {actionError}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActionError('')
+                    }
+                    className="text-red-400 transition hover:text-red-600"
+                    aria-label="Close error"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
+
               <div className="space-y-6">
                 {/* EMPLOYEE + MONTH */}
 
@@ -1388,8 +1430,7 @@ export default function PerformancePage() {
                                       rating <=
                                       Number(
                                         form[
-                                          item
-                                            .key
+                                          item.key
                                         ]
                                       )
                                         ? 'fill-amber-400 text-amber-400'
@@ -1713,7 +1754,99 @@ export default function PerformancePage() {
           </div>
         </div>
       )}
+
+      {/* ======================================================
+          DELETE CONFIRMATION MODAL
+      ====================================================== */}
+
+      {deleteConfirmation && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <div className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-100">
+                  <Trash2 className="h-5 w-5 text-red-600" />
+                </div>
+
+                <div className="min-w-0">
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Delete Performance Review?
+                  </h2>
+
+                  <p className="mt-2 text-sm leading-6 text-gray-600">
+                    Are you sure you want to delete the
+                    performance review for{' '}
+                    <span className="font-semibold text-gray-900">
+                      {getReviewEmployeeName(
+                        deleteConfirmation
+                      )}
+                    </span>{' '}
+                    for{' '}
+                    <span className="font-semibold text-gray-900">
+                      {formatMonth(
+                        deleteConfirmation.reviewPeriod
+                      )}
+                    </span>
+                    ?
+                  </p>
+
+                  <p className="mt-2 text-xs text-red-600">
+                    This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+
+              {actionError && (
+                <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3">
+                  <p className="text-sm text-red-700">
+                    {actionError}
+                  </p>
+                </div>
+              )}
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteConfirmation(null);
+                    setActionError('');
+                  }}
+                  disabled={
+                    deletingId ===
+                    deleteConfirmation.id
+                  }
+                  className="rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={confirmDelete}
+                  disabled={
+                    deletingId ===
+                    deleteConfirmation.id
+                  }
+                  className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {deletingId ===
+                  deleteConfirmation.id ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4" />
+                      Delete Review
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-

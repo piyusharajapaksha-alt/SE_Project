@@ -22,6 +22,11 @@ export interface PerformanceReviewPayload {
 export interface PerformanceReview
   extends PerformanceReviewPayload {
   id: number;
+
+  employeeName?: string;
+  department?: string;
+  position?: string;
+
   createdAt?: string;
   updatedAt?: string;
 }
@@ -39,6 +44,7 @@ export const performanceService = {
     );
   },
 
+
   // ============================================================
   // READ ONE
   // ============================================================
@@ -52,6 +58,7 @@ export const performanceService = {
     );
   },
 
+
   // ============================================================
   // READ BY EMPLOYEE
   // ============================================================
@@ -61,9 +68,12 @@ export const performanceService = {
   ): Promise<PerformanceReview[]> {
 
     return apiRequest<PerformanceReview[]>(
-      `/api/performance/employee/${encodeURIComponent(employeeId)}`
+      `/api/performance/employee/${encodeURIComponent(
+        employeeId
+      )}`
     );
   },
+
 
   // ============================================================
   // CREATE
@@ -73,14 +83,22 @@ export const performanceService = {
     data: PerformanceReviewPayload
   ): Promise<PerformanceReview> {
 
+    /*
+     * IMPORTANT:
+     * apiRequest() already calls JSON.stringify()
+     * internally.
+     *
+     * Therefore we MUST pass the object directly.
+     */
     return apiRequest<PerformanceReview>(
       '/api/performance',
       {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: data,
       }
     );
   },
+
 
   // ============================================================
   // UPDATE
@@ -91,14 +109,19 @@ export const performanceService = {
     data: PerformanceReviewPayload
   ): Promise<PerformanceReview> {
 
+    /*
+     * Same rule as CREATE:
+     * do not JSON.stringify here.
+     */
     return apiRequest<PerformanceReview>(
       `/api/performance/${id}`,
       {
         method: 'PUT',
-        body: JSON.stringify(data),
+        body: data,
       }
     );
   },
+
 
   // ============================================================
   // DELETE
