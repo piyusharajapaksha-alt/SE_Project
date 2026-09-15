@@ -22,13 +22,18 @@ export interface Grievance {
   id?: number;
   employeeId: string;
   employeeName?: string;
+
   category: string;
   priority: string;
   description: string;
+
   status?: string;
+
   assignedTo?: string;
   assignedToName?: string;
+
   createdAt?: string;
+
   responses?: GrievanceResponse[];
 }
 
@@ -40,31 +45,55 @@ export interface GrievanceFilters {
   category?: string;
 }
 
+export interface UpdateGrievancePayload {
+  employeeId: string;
+  category: string;
+  priority: string;
+  description: string;
+}
+
 // ------------------------------------------------------------
 // Build query string
 // ------------------------------------------------------------
 
-function buildQuery(filters: GrievanceFilters = {}): string {
+function buildQuery(
+  filters: GrievanceFilters = {}
+): string {
   const params = new URLSearchParams();
 
   if (filters.employeeId) {
-    params.set('employeeId', filters.employeeId);
+    params.set(
+      'employeeId',
+      filters.employeeId
+    );
   }
 
   if (filters.search) {
-    params.set('search', filters.search);
+    params.set(
+      'search',
+      filters.search
+    );
   }
 
   if (filters.status) {
-    params.set('status', filters.status);
+    params.set(
+      'status',
+      filters.status
+    );
   }
 
   if (filters.priority) {
-    params.set('priority', filters.priority);
+    params.set(
+      'priority',
+      filters.priority
+    );
   }
 
   if (filters.category) {
-    params.set('category', filters.category);
+    params.set(
+      'category',
+      filters.category
+    );
   }
 
   const query = params.toString();
@@ -76,7 +105,9 @@ function buildQuery(filters: GrievanceFilters = {}): string {
 // Date helper
 // ------------------------------------------------------------
 
-function formatDate(value?: string): string {
+function formatDate(
+  value?: string
+): string {
   if (!value) {
     return '';
   }
@@ -104,15 +135,22 @@ function normalizeGrievance(
       ? formatDate(grievance.createdAt)
       : '',
 
-    responses: Array.isArray(grievance.responses)
-      ? grievance.responses.map((response) => ({
-          ...response,
+    responses:
+      Array.isArray(
+        grievance.responses
+      )
+        ? grievance.responses.map(
+            (response) => ({
+              ...response,
 
-          date: response.createdAt
-            ? formatDate(response.createdAt)
-            : '',
-        }))
-      : [],
+              date: response.createdAt
+                ? formatDate(
+                    response.createdAt
+                  )
+                : '',
+            })
+          )
+        : [],
   };
 }
 
@@ -121,37 +159,41 @@ function normalizeGrievance(
 // ------------------------------------------------------------
 
 export const grievanceService = {
-
   // ----------------------------------------------------------
-  // Get all grievances
+  // Get grievances
   // ----------------------------------------------------------
 
   async getAll(
     filters: GrievanceFilters = {}
   ): Promise<Grievance[]> {
+    const query =
+      buildQuery(filters);
 
-    const query = buildQuery(filters);
-
-    const data = await apiRequest<Grievance[]>(
-      `/api/grievances${query}`
-    );
+    const data =
+      await apiRequest<Grievance[]>(
+        `/api/grievances${query}`
+      );
 
     if (!Array.isArray(data)) {
       return [];
     }
 
-    return data.map(normalizeGrievance);
+    return data.map(
+      normalizeGrievance
+    );
   },
 
   // ----------------------------------------------------------
   // Get one grievance
   // ----------------------------------------------------------
 
-  async getById(id: number): Promise<Grievance> {
-
-    const data = await apiRequest<Grievance>(
-      `/api/grievances/${id}`
-    );
+  async getById(
+    id: number
+  ): Promise<Grievance> {
+    const data =
+      await apiRequest<Grievance>(
+        `/api/grievances/${id}`
+      );
 
     return normalizeGrievance(data);
   },
@@ -168,18 +210,86 @@ export const grievanceService = {
       description: string;
     }
   ): Promise<number> {
-
     return apiRequest<number>(
       '/api/grievances',
       {
         method: 'POST',
 
         body: {
-          employeeId: grievance.employeeId,
-          category: grievance.category,
-          priority: grievance.priority,
-          description: grievance.description,
+          employeeId:
+            grievance.employeeId,
+
+          category:
+            grievance.category,
+
+          priority:
+            grievance.priority,
+
+          description:
+            grievance.description,
         },
+      }
+    );
+  },
+
+  // ----------------------------------------------------------
+  // Update own grievance
+  //
+  // Backend verifies:
+  // - employee owns grievance
+  // - grievance is still New
+  // ----------------------------------------------------------
+
+  async update(
+    grievanceId: number,
+    grievance: UpdateGrievancePayload
+  ): Promise<string> {
+    return apiRequest<string>(
+      `/api/grievances/${grievanceId}`,
+      {
+        method: 'PUT',
+
+        body: {
+          employeeId:
+            grievance.employeeId,
+
+          category:
+            grievance.category,
+
+          priority:
+            grievance.priority,
+
+          description:
+            grievance.description,
+        },
+      }
+    );
+  },
+
+  // ----------------------------------------------------------
+  // Delete own grievance
+  //
+  // Backend verifies:
+  // - employee owns grievance
+  // - grievance is still New
+  // ----------------------------------------------------------
+
+  async delete(
+    grievanceId: number,
+    employeeId: string
+  ): Promise<string> {
+    const params =
+      new URLSearchParams();
+
+    params.set(
+      'employeeId',
+      employeeId
+    );
+
+    return apiRequest<string>(
+      `/api/grievances/${grievanceId}?${params.toString()}`,
+      {
+        method: 'DELETE',
       }
     );
   },
@@ -193,7 +303,6 @@ export const grievanceService = {
     employeeId: string,
     text: string
   ): Promise<string> {
-
     return apiRequest<string>(
       `/api/grievances/${grievanceId}/responses`,
       {
@@ -209,20 +318,12 @@ export const grievanceService = {
 
   // ----------------------------------------------------------
   // Update status
-  //
-  // IMPORTANT:
-  // We intentionally send ONLY the status.
-  //
-  // The current backend uses "updatedBy" as "assignedTo".
-  // Sending employeeId here would accidentally assign the
-  // grievance to the person updating the status.
   // ----------------------------------------------------------
 
   async updateStatus(
     grievanceId: number,
     status: string
   ): Promise<string> {
-
     return apiRequest<string>(
       `/api/grievances/${grievanceId}/status`,
       {
