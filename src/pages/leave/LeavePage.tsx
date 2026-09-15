@@ -27,6 +27,7 @@ import {
   Plus,
   User,
   BriefcaseBusiness,
+  FileText,
 } from 'lucide-react';
 
 type LeaveRequest = {
@@ -70,6 +71,14 @@ export default function LeavePage() {
     checkPermission('leave.approve');
 
   const [requests, setRequests] =
+    useState<LeaveRequest[]>([]);
+
+  /*
+   * Management summary uses a separate unfiltered
+   * list so search/status/department filters do not
+   * change the overall statistics.
+   */
+  const [allManagementRequests, setAllManagementRequests] =
     useState<LeaveRequest[]>([]);
 
   const [balance, setBalance] =
@@ -123,7 +132,6 @@ export default function LeavePage() {
 
   const perPage = 10;
 
-
   // ============================================================
   // LOAD DATA
   // ============================================================
@@ -138,7 +146,6 @@ export default function LeavePage() {
     deptFilter,
   ]);
 
-
   const loadData = async () => {
     if (!user) {
       setLoading(false);
@@ -151,10 +158,16 @@ export default function LeavePage() {
     try {
       const filters: Record<string, string> = {};
 
+      // --------------------------------------------------------
+      // EMPLOYEE VIEW
+      // --------------------------------------------------------
       if (isEmployeeView) {
         filters.employeeId = user.employeeId;
       }
 
+      // --------------------------------------------------------
+      // MANAGEMENT TABLE FILTERS
+      // --------------------------------------------------------
       if (isManagementView) {
         if (search.trim()) {
           filters.search = search.trim();
@@ -169,11 +182,11 @@ export default function LeavePage() {
         filters.status = statusFilter;
       }
 
-      const [leaveData, balanceData] =
-        await Promise.all([
-          leaveService.getAll(filters),
-          leaveService.getBalance(user.employeeId),
-        ]);
+      // --------------------------------------------------------
+      // LOAD TABLE DATA
+      // --------------------------------------------------------
+      const leaveData =
+        await leaveService.getAll(filters);
 
       setRequests(
         Array.isArray(leaveData)
@@ -181,9 +194,59 @@ export default function LeavePage() {
           : []
       );
 
-      setBalance(
-        balanceData ?? null
-      );
+      // --------------------------------------------------------
+      // MANAGEMENT SUMMARY
+      //
+      // Load ALL leave requests separately.
+      // This is intentionally unfiltered.
+      // --------------------------------------------------------
+      if (isManagementView) {
+        try {
+          const managementData =
+            await leaveService.getAll({});
+
+          setAllManagementRequests(
+            Array.isArray(managementData)
+              ? managementData
+              : []
+          );
+        } catch (summaryError) {
+          console.error(
+            'Failed to load leave summary:',
+            summaryError
+          );
+
+          setAllManagementRequests([]);
+        }
+
+        // Management page does NOT need employee balance.
+        setBalance(null);
+      }
+
+      // --------------------------------------------------------
+      // EMPLOYEE BALANCE
+      // --------------------------------------------------------
+      if (isEmployeeView) {
+        try {
+          const balanceData =
+            await leaveService.getBalance(
+              user.employeeId
+            );
+
+          setBalance(
+            balanceData ?? null
+          );
+        } catch (balanceError) {
+          console.error(
+            'Failed to load leave balance:',
+            balanceError
+          );
+
+          setBalance(null);
+        }
+
+        setAllManagementRequests([]);
+      }
 
       setCurrentPage(1);
     } catch (error) {
@@ -193,13 +256,107 @@ export default function LeavePage() {
       );
 
       setErrorMessage(
-        'Unable to load leave information. Please check the backend connection.'
+        error instanceof Error
+          ? error.message
+          : 'Unable to load leave information. Please check the backend connection.'
       );
     } finally {
       setLoading(false);
     }
   };
 
+  // ============================================================
+  // MANAGEMENT SUMMARY
+  // ============================================================
+
+  const managementSummary = useMemo(() => {
+    const totalRequests =
+      allManagementRequests.length;
+
+    const pending =
+      allManagementRequests.filter(
+        (request) =>
+          request.status === 'Pending'
+      ).length;
+
+    const approved =
+      allManagementRequests.filter(
+        (request) =>
+          request.status === 'Approved'
+      ).length;
+
+    const rejected =
+      allManagementRequests.filter(
+        (request) =>
+          request.status === 'Rejected'
+      ).length;
+
+    const cancelled =
+      allManagementRequests.filter(
+        (request) =>
+          request.status === 'Cancelled'
+      ).length;
+
+    /*
+     * Calculate total business leave days.
+     * Weekends are excluded, matching the request form.
+     */
+    const totalLeaveDays =
+      allManagementRequests.reduce(
+        (total, request) => {
+          if (
+            !request.startDate ||
+            !request.endDate
+          ) {
+            return total;
+          }
+
+          const start =
+            new Date(
+              `${request.startDate}T00:00:00`
+            );
+
+          const end =
+            new Date(
+              `${request.endDate}T00:00:00`
+            );
+
+          if (start > end) {
+            return total;
+          }
+
+          let days = 0;
+          const current = new Date(start);
+
+          while (current <= end) {
+            const day = current.getDay();
+
+            if (
+              day !== 0 &&
+              day !== 6
+            ) {
+              days++;
+            }
+
+            current.setDate(
+              current.getDate() + 1
+            );
+          }
+
+          return total + days;
+        },
+        0
+      );
+
+    return {
+      totalRequests,
+      pending,
+      approved,
+      rejected,
+      cancelled,
+      totalLeaveDays,
+    };
+  }, [allManagementRequests]);
 
   // ============================================================
   // VALIDATE FORM
@@ -209,7 +366,8 @@ export default function LeavePage() {
     const nextErrors: Record<string, string> = {};
 
     if (!form.type) {
-      nextErrors.type = 'Leave type is required';
+      nextErrors.type =
+        'Leave type is required';
     }
 
     if (!form.startDate) {
@@ -238,37 +396,47 @@ export default function LeavePage() {
 
     setErrors(nextErrors);
 
-    return Object.keys(nextErrors).length === 0;
+    return (
+      Object.keys(nextErrors).length === 0
+    );
   };
-
 
   // ============================================================
   // BUSINESS DAYS
   // ============================================================
 
   const duration = useMemo(() => {
-    if (!form.startDate || !form.endDate) {
+    if (
+      !form.startDate ||
+      !form.endDate
+    ) {
       return 0;
     }
 
     const start =
-      new Date(`${form.startDate}T00:00:00`);
+      new Date(
+        `${form.startDate}T00:00:00`
+      );
 
     const end =
-      new Date(`${form.endDate}T00:00:00`);
+      new Date(
+        `${form.endDate}T00:00:00`
+      );
 
     if (start > end) {
       return 0;
     }
 
     let days = 0;
-
     const current = new Date(start);
 
     while (current <= end) {
       const day = current.getDay();
 
-      if (day !== 0 && day !== 6) {
+      if (
+        day !== 0 &&
+        day !== 6
+      ) {
         days++;
       }
 
@@ -283,7 +451,6 @@ export default function LeavePage() {
     form.endDate,
   ]);
 
-
   // ============================================================
   // CREATE REQUEST
   // ============================================================
@@ -293,7 +460,10 @@ export default function LeavePage() {
   ) => {
     event.preventDefault();
 
-    if (!validate() || !user) {
+    if (
+      !validate() ||
+      !user
+    ) {
       return;
     }
 
@@ -301,11 +471,15 @@ export default function LeavePage() {
 
     try {
       await leaveService.create({
-        employeeId: user.employeeId,
+        employeeId:
+          user.employeeId,
         type: form.type,
-        startDate: form.startDate,
-        endDate: form.endDate,
-        reason: form.reason.trim(),
+        startDate:
+          form.startDate,
+        endDate:
+          form.endDate,
+        reason:
+          form.reason.trim(),
         approverId: '',
       });
 
@@ -334,13 +508,14 @@ export default function LeavePage() {
 
       addToast(
         'error',
-        'Failed to submit leave request'
+        error instanceof Error
+          ? error.message
+          : 'Failed to submit leave request'
       );
     } finally {
       setSaving(false);
     }
   };
-
 
   // ============================================================
   // APPROVE / REJECT
@@ -366,7 +541,9 @@ export default function LeavePage() {
     setApproveLoading(true);
 
     try {
-      if (approveAction === 'approve') {
+      if (
+        approveAction === 'approve'
+      ) {
         await leaveService.approve(
           selectedRequest.id,
           approveComment
@@ -400,13 +577,14 @@ export default function LeavePage() {
 
       addToast(
         'error',
-        'Failed to update leave request'
+        error instanceof Error
+          ? error.message
+          : 'Failed to update leave request'
       );
     } finally {
       setApproveLoading(false);
     }
   };
-
 
   // ============================================================
   // CANCEL
@@ -432,11 +610,12 @@ export default function LeavePage() {
 
       addToast(
         'error',
-        'Failed to cancel leave request'
+        error instanceof Error
+          ? error.message
+          : 'Failed to cancel leave request'
       );
     }
   };
-
 
   // ============================================================
   // STATUS BADGE
@@ -463,7 +642,6 @@ export default function LeavePage() {
     }
   };
 
-
   // ============================================================
   // PAGINATION
   // ============================================================
@@ -479,10 +657,12 @@ export default function LeavePage() {
       currentPage * perPage
     );
 
+  // ============================================================
+  // RENDER
+  // ============================================================
 
   return (
     <div>
-
       <PageHeader
         title={
           isEmployeeView
@@ -492,12 +672,14 @@ export default function LeavePage() {
         description={
           isEmployeeView
             ? 'Request and track your leave'
-            : 'Manage employee leave requests and balances'
+            : 'Review and manage employee leave requests'
         }
         action={
           isEmployeeView ? (
             <button
-              onClick={() => setShowForm(true)}
+              onClick={() =>
+                setShowForm(true)
+              }
               className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 flex items-center gap-2"
             >
               <Plus className="h-4 w-4" />
@@ -507,34 +689,78 @@ export default function LeavePage() {
         }
       />
 
+      {/* ======================================================
+          ERROR
+      ====================================================== */}
 
-      {/* ERROR */}
       {errorMessage && (
         <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {errorMessage}
         </div>
       )}
 
-
       {/* ======================================================
-          LEAVE BALANCE
+          EMPLOYEE LEAVE BALANCE
+          
+          Only visible on My Leave.
       ====================================================== */}
 
-      {balance && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      {isEmployeeView &&
+        balance && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <StatCard
+              title="Annual Leave"
+              value={`${balance.annualLeave.remaining}/${balance.annualLeave.total}`}
+              icon={
+                <CalendarDays className="h-5 w-5" />
+              }
+              color="blue"
+            />
 
+            <StatCard
+              title="Sick Leave"
+              value={`${balance.sickLeave.remaining}/${balance.sickLeave.total}`}
+              icon={
+                <Clock className="h-5 w-5" />
+              }
+              color="amber"
+            />
+
+            <StatCard
+              title="Personal Leave"
+              value={`${balance.personalLeave.remaining}/${balance.personalLeave.total}`}
+              icon={
+                <CalendarDays className="h-5 w-5" />
+              }
+              color="purple"
+            />
+          </div>
+        )}
+
+      {/* ======================================================
+          MANAGEMENT LEAVE SUMMARY
+          
+          Only visible on Leave Management.
+      ====================================================== */}
+
+      {isManagementView && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
           <StatCard
-            title="Annual Leave"
-            value={`${balance.annualLeave.remaining}/${balance.annualLeave.total}`}
+            title="Total Requests"
+            value={
+              managementSummary.totalRequests
+            }
             icon={
-              <CalendarDays className="h-5 w-5" />
+              <FileText className="h-5 w-5" />
             }
             color="blue"
           />
 
           <StatCard
-            title="Sick Leave"
-            value={`${balance.sickLeave.remaining}/${balance.sickLeave.total}`}
+            title="Pending"
+            value={
+              managementSummary.pending
+            }
             icon={
               <Clock className="h-5 w-5" />
             }
@@ -542,24 +768,56 @@ export default function LeavePage() {
           />
 
           <StatCard
-            title="Personal Leave"
-            value={`${balance.personalLeave.remaining}/${balance.personalLeave.total}`}
+            title="Approved"
+            value={
+              managementSummary.approved
+            }
             icon={
-              <CalendarDays className="h-5 w-5" />
+              <CheckCircle className="h-5 w-5" />
+            }
+            color="green"
+          />
+
+          <StatCard
+            title="Rejected"
+            value={
+              managementSummary.rejected
+            }
+            icon={
+              <XCircle className="h-5 w-5" />
+            }
+            color="red"
+          />
+
+          <StatCard
+            title="Cancelled"
+            value={
+              managementSummary.cancelled
+            }
+            icon={
+              <XCircle className="h-5 w-5" />
             }
             color="purple"
           />
 
+          <StatCard
+            title="Total Leave Days"
+            value={
+              managementSummary.totalLeaveDays
+            }
+            icon={
+              <CalendarDays className="h-5 w-5" />
+            }
+            color="indigo"
+          />
         </div>
       )}
-
 
       {/* ======================================================
           FILTERS
       ====================================================== */}
 
       <div className="flex flex-col lg:flex-row gap-3 mb-4">
-
         {isManagementView && (
           <div className="flex-1">
             <SearchInput
@@ -599,38 +857,28 @@ export default function LeavePage() {
           ]}
           placeholder="All Statuses"
         />
-
       </div>
 
-
       {/* ======================================================
-          LOADING
+          LOADING / EMPTY / TABLE
       ====================================================== */}
 
       {loading ? (
         <LoadingState />
       ) : requests.length === 0 ? (
-
         <EmptyState
           icon={
             <CalendarDays className="h-6 w-6" />
           }
           title="No leave requests found"
         />
-
       ) : (
-
         <>
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-
             <div className="overflow-x-auto">
-
               <table className="w-full text-sm">
-
                 <thead className="bg-gray-50">
-
                   <tr>
-
                     {isManagementView && (
                       <>
                         <th className="text-left py-3 px-4 font-medium text-gray-600">
@@ -662,28 +910,20 @@ export default function LeavePage() {
                     <th className="text-right py-3 px-4 font-medium text-gray-600">
                       Actions
                     </th>
-
                   </tr>
-
                 </thead>
 
-
                 <tbody>
-
                   {pagedRequests.map(
                     (request) => (
-
                       <tr
                         key={request.id}
                         className="border-t border-gray-100 hover:bg-gray-50"
                       >
-
                         {isManagementView && (
                           <>
                             <td className="py-3 px-4">
-
                               <div className="flex items-center gap-2">
-
                                 <div className="h-8 w-8 rounded-full bg-indigo-50 flex items-center justify-center">
                                   <User className="h-4 w-4 text-indigo-600" />
                                 </div>
@@ -698,18 +938,15 @@ export default function LeavePage() {
                                     {request.employeeId}
                                   </p>
                                 </div>
-
                               </div>
-
                             </td>
 
                             <td className="py-3 px-4 hidden lg:table-cell">
-
                               <div className="flex items-center gap-2 text-gray-600">
                                 <BriefcaseBusiness className="h-4 w-4" />
-                                {request.department || '-'}
+                                {request.department ||
+                                  '-'}
                               </div>
-
                             </td>
                           </>
                         )}
@@ -727,7 +964,6 @@ export default function LeavePage() {
                         </td>
 
                         <td className="py-3 px-4">
-
                           <Badge
                             variant={
                               statusBadge(
@@ -738,13 +974,10 @@ export default function LeavePage() {
                           >
                             {request.status}
                           </Badge>
-
                         </td>
 
                         <td className="py-3 px-4">
-
                           <div className="flex items-center justify-end gap-1">
-
                             {canApprove &&
                               request.status ===
                                 'Pending' && (
@@ -754,10 +987,14 @@ export default function LeavePage() {
                                       setSelectedRequest(
                                         request
                                       );
+
                                       setApproveAction(
                                         'approve'
                                       );
-                                      setApproveComment('');
+
+                                      setApproveComment(
+                                        ''
+                                      );
                                     }}
                                     className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg"
                                     title="Approve"
@@ -770,10 +1007,14 @@ export default function LeavePage() {
                                       setSelectedRequest(
                                         request
                                       );
+
                                       setApproveAction(
                                         'reject'
                                       );
-                                      setApproveComment('');
+
+                                      setApproveComment(
+                                        ''
+                                      );
                                     }}
                                     className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
                                     title="Reject"
@@ -798,37 +1039,27 @@ export default function LeavePage() {
                                   <XCircle className="h-4 w-4" />
                                 </button>
                               )}
-
                           </div>
-
                         </td>
-
                       </tr>
-
                     )
                   )}
-
                 </tbody>
-
               </table>
-
             </div>
-
           </div>
-
 
           {totalPages > 1 && (
             <Pagination
               currentPage={currentPage}
               totalPages={totalPages}
-              onPageChange={setCurrentPage}
+              onPageChange={
+                setCurrentPage
+              }
             />
           )}
-
         </>
-
       )}
-
 
       {/* ======================================================
           REQUEST LEAVE MODAL
@@ -836,16 +1067,18 @@ export default function LeavePage() {
 
       <Modal
         isOpen={showForm}
-        onClose={() => setShowForm(false)}
+        onClose={() =>
+          setShowForm(false)
+        }
         title="Request Leave"
         size="md"
       >
-
         <form
-          onSubmit={handleSubmitRequest}
+          onSubmit={
+            handleSubmitRequest
+          }
           className="space-y-4"
         >
-
           <FormSelect
             label="Leave Type"
             required
@@ -866,9 +1099,7 @@ export default function LeavePage() {
             error={errors.type}
           />
 
-
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
             <FormInput
               label="Start Date"
               type="date"
@@ -881,7 +1112,9 @@ export default function LeavePage() {
                     event.target.value,
                 })
               }
-              error={errors.startDate}
+              error={
+                errors.startDate
+              }
             />
 
             <FormInput
@@ -898,25 +1131,23 @@ export default function LeavePage() {
               }
               error={errors.endDate}
             />
-
           </div>
-
 
           {duration > 0 && (
             <div className="rounded-lg bg-indigo-50 border border-indigo-100 px-4 py-3">
-
               <p className="text-sm text-indigo-700 font-medium">
-                Duration: {duration} business day
-                {duration !== 1 ? 's' : ''}
+                Duration: {duration}{' '}
+                business day
+                {duration !== 1
+                  ? 's'
+                  : ''}
               </p>
 
               <p className="text-xs text-indigo-600 mt-1">
                 Weekends are not included.
               </p>
-
             </div>
           )}
-
 
           <FormTextarea
             label="Reason"
@@ -934,9 +1165,7 @@ export default function LeavePage() {
             placeholder="Explain the reason for your leave..."
           />
 
-
           <div className="flex justify-end gap-3 pt-4">
-
             <button
               type="button"
               onClick={() =>
@@ -952,21 +1181,15 @@ export default function LeavePage() {
               disabled={saving}
               className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
             >
-
               {saving && (
                 <Loader2 className="h-4 w-4 animate-spin" />
               )}
 
               Submit Request
-
             </button>
-
           </div>
-
         </form>
-
       </Modal>
-
 
       {/* ======================================================
           APPROVE / REJECT MODAL
@@ -981,21 +1204,17 @@ export default function LeavePage() {
           }
         }}
         title={
-          approveAction === 'approve'
+          approveAction ===
+          'approve'
             ? 'Approve Leave Request'
             : 'Reject Leave Request'
         }
         size="sm"
       >
-
         {selectedRequest && (
-
           <div className="space-y-4">
-
             <div className="rounded-lg bg-gray-50 border border-gray-200 p-4">
-
               <div className="flex items-center gap-3 mb-3">
-
                 <div className="h-10 w-10 rounded-full bg-indigo-50 flex items-center justify-center">
                   <User className="h-5 w-5 text-indigo-600" />
                 </div>
@@ -1010,43 +1229,48 @@ export default function LeavePage() {
                     {selectedRequest.employeeId}
                   </p>
                 </div>
-
               </div>
 
               <div className="text-sm text-gray-600 space-y-1">
-
                 <p>
-                  <strong>Type:</strong>{' '}
+                  <strong>
+                    Type:
+                  </strong>{' '}
                   {selectedRequest.type}
                 </p>
 
                 <p>
-                  <strong>Dates:</strong>{' '}
+                  <strong>
+                    Dates:
+                  </strong>{' '}
                   {selectedRequest.startDate}
                   {' - '}
                   {selectedRequest.endDate}
                 </p>
 
                 <p>
-                  <strong>Reason:</strong>{' '}
+                  <strong>
+                    Reason:
+                  </strong>{' '}
                   {selectedRequest.reason}
                 </p>
-
               </div>
-
             </div>
-
 
             <FormTextarea
               label={
-                approveAction === 'reject'
+                approveAction ===
+                'reject'
                   ? 'Rejection Reason'
                   : 'Comments'
               }
               required={
-                approveAction === 'reject'
+                approveAction ===
+                'reject'
               }
-              value={approveComment}
+              value={
+                approveComment
+              }
               onChange={(event) =>
                 setApproveComment(
                   event.target.value
@@ -1054,53 +1278,56 @@ export default function LeavePage() {
               }
               rows={3}
               placeholder={
-                approveAction === 'reject'
+                approveAction ===
+                'reject'
                   ? 'Please explain why this request is being rejected...'
                   : 'Optional comment...'
               }
             />
 
-
             <div className="flex justify-end gap-3">
-
               <button
                 onClick={() =>
-                  setSelectedRequest(null)
+                  setSelectedRequest(
+                    null
+                  )
                 }
-                disabled={approveLoading}
+                disabled={
+                  approveLoading
+                }
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
               >
                 Cancel
               </button>
 
               <button
-                onClick={handleDecision}
-                disabled={approveLoading}
+                onClick={
+                  handleDecision
+                }
+                disabled={
+                  approveLoading
+                }
                 className={`px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 flex items-center gap-2 ${
-                  approveAction === 'approve'
+                  approveAction ===
+                  'approve'
                     ? 'bg-green-600 hover:bg-green-700'
                     : 'bg-red-600 hover:bg-red-700'
                 }`}
               >
-
                 {approveLoading && (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 )}
 
-                {approveAction === 'approve'
+                {approveAction ===
+                'approve'
                   ? 'Approve'
                   : 'Reject'}
-
               </button>
-
             </div>
-
           </div>
-
         )}
-
       </Modal>
-
     </div>
   );
 }
+
