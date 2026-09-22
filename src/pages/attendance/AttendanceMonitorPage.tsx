@@ -1,15 +1,53 @@
 import { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { getAttendanceSession, type AttendanceSession } from '@/services/attendanceQrService';
+import {
+  getAttendanceMonitor,
+  rotateAttendanceQr,
+  type AttendanceMonitor,
+} from '@/services/attendanceQrService';
+import {
+  RefreshCw,
+  ShieldCheck,
+  Wifi,
+} from 'lucide-react';
 
 export default function AttendanceMonitorPage() {
-  const [session, setSession] = useState<AttendanceSession | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [monitor, setMonitor] =
+    useState<AttendanceMonitor | null>(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [seconds, setSeconds] =
+    useState(10);
 
   const load = async () => {
-    setLoading(true);
     try {
-      setSession(await getAttendanceSession());
+      const result =
+        await getAttendanceMonitor();
+
+      setMonitor(result);
+
+      if (result.qrExpiresAt) {
+        const remaining =
+          Math.ceil(
+            (
+              new Date(result.qrExpiresAt).getTime() -
+              Date.now()
+            ) / 1000
+          );
+
+        setSeconds(
+          Math.max(0, remaining)
+        );
+      } else {
+        setSeconds(10);
+      }
+    } catch (error) {
+      console.error(
+        'Attendance monitor error',
+        error
+      );
     } finally {
       setLoading(false);
     }
@@ -17,35 +55,169 @@ export default function AttendanceMonitorPage() {
 
   useEffect(() => {
     load();
-    const timer = window.setInterval(load, 2000);
-    return () => window.clearInterval(timer);
+
+    const timer =
+      window.setInterval(
+        load,
+        1000
+      );
+
+    return () =>
+      window.clearInterval(timer);
   }, []);
 
-  if (loading && !session) {
-    return <div className="min-h-screen bg-white flex items-center justify-center text-gray-500">Connecting to attendance server...</div>;
+  useEffect(() => {
+    if (
+      !monitor?.active ||
+      !monitor.currentQrToken
+    ) {
+      return;
+    }
+
+    if (seconds <= 0) {
+      rotateAttendanceQr()
+        .then((result) => {
+          setMonitor(result);
+
+          if (result.qrExpiresAt) {
+            const remaining =
+              Math.ceil(
+                (
+                  new Date(result.qrExpiresAt).getTime() -
+                  Date.now()
+                ) / 1000
+              );
+
+            setSeconds(
+              Math.max(0, remaining)
+            );
+          } else {
+            setSeconds(10);
+          }
+        })
+        .catch(console.error);
+    }
+  }, [seconds, monitor?.active, monitor?.currentQrToken]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+        Loading Attendance Monitor...
+      </div>
+    );
   }
 
-  if (!session?.active || !session.currentQr) {
+  /*
+   * INACTIVE
+   */
+
+  if (
+    !monitor?.active ||
+    !monitor.currentQrToken
+  ) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center px-6 text-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Attendance Monitor</h1>
-          <p className="mt-3 text-gray-500">No active backend attendance session.</p>
-          <p className="mt-1 text-sm text-gray-400">Start a session from Attendance Management.</p>
+      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6">
+        <div className="text-center">
+
+          <div className="flex justify-center mb-8">
+            <div className="h-16 w-16 rounded-2xl bg-indigo-600 flex items-center justify-center">
+              <ShieldCheck className="h-9 w-9" />
+            </div>
+          </div>
+
+          <p className="text-indigo-400 font-semibold uppercase tracking-[0.25em] text-sm">
+            StaffHub
+          </p>
+
+          <h1 className="mt-4 text-4xl md:text-6xl font-black">
+            Attendance Monitor
+          </h1>
+
+          <p className="mt-4 text-slate-400">
+            Enter this temporary code in Attendance Management
+            to activate the monitor.
+          </p>
+
+          <div className="mt-10 rounded-3xl bg-white text-slate-950 px-12 py-10 shadow-2xl">
+
+            <p className="text-sm font-semibold uppercase tracking-widest text-slate-500">
+              Temporary Activation Code
+            </p>
+
+            <div className="mt-5 text-6xl md:text-8xl font-black tracking-[0.2em]">
+              {monitor?.activationCode || '------'}
+            </div>
+
+          </div>
+
+          <div className="mt-8 flex items-center justify-center gap-2 text-slate-400">
+
+            <RefreshCw className="h-4 w-4" />
+
+            <span>
+              This code is managed by the attendance server
+            </span>
+
+          </div>
+
         </div>
       </div>
     );
   }
 
+  /*
+   * ACTIVE
+   */
+
   return (
-    <div className="min-h-screen w-full bg-white flex flex-col items-center justify-center px-6 text-center">
-      <p className="text-sm font-semibold uppercase tracking-widest text-gray-500">StaffHub Attendance</p>
-      <h1 className="mt-3 text-4xl font-black text-gray-900">Scan to Mark Attendance</h1>
-      <div className="mt-10 rounded-3xl border border-gray-200 p-8 bg-white shadow-sm">
-        <QRCodeSVG value={session.currentQr.token} size={360} includeMargin />
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+
+      <div className="text-center">
+
+        <p className="text-indigo-400 font-semibold uppercase tracking-[0.3em]">
+          StaffHub
+        </p>
+
+        <h1 className="mt-4 text-4xl md:text-6xl font-black uppercase">
+          Scan to Mark Attendance
+        </h1>
+
+        <div className="mt-10 bg-white p-8 rounded-[2rem] shadow-2xl inline-block">
+
+          <QRCodeSVG
+            value={monitor.currentQrToken}
+            size={380}
+            includeMargin
+          />
+
+        </div>
+
+        <div className="mt-8 flex justify-center items-center gap-3">
+
+          <div className="h-3 w-3 rounded-full bg-green-500 animate-pulse" />
+
+          <span className="font-semibold">
+            Attendance is LIVE
+          </span>
+
+        </div>
+
+        <div className="mt-5 flex items-center justify-center gap-2 text-slate-400">
+
+          <Wifi className="h-4 w-4" />
+
+          <span>
+            QR refreshes in {seconds}s
+          </span>
+
+        </div>
+
+        <p className="mt-3 text-xs text-slate-500">
+          QR sequence #{monitor.qrSequence}
+        </p>
+
       </div>
-      <p className="mt-6 text-sm text-gray-500">Session: {session.id}</p>
-      <p className="mt-1 text-sm text-gray-400">QR sequence: {session.currentQr.sequence}</p>
+
     </div>
   );
 }
