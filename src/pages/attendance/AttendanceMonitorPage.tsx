@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+
 import {
   getAttendanceMonitor,
-  rotateAttendanceQr,
   type AttendanceMonitor,
 } from '@/services/attendanceQrService';
+
 import {
   RefreshCw,
   ShieldCheck,
@@ -28,21 +29,7 @@ export default function AttendanceMonitorPage() {
 
       setMonitor(result);
 
-      if (result.qrExpiresAt) {
-        const remaining =
-          Math.ceil(
-            (
-              new Date(result.qrExpiresAt).getTime() -
-              Date.now()
-            ) / 1000
-          );
-
-        setSeconds(
-          Math.max(0, remaining)
-        );
-      } else {
-        setSeconds(10);
-      }
+      updateCountdown(result);
     } catch (error) {
       console.error(
         'Attendance monitor error',
@@ -53,13 +40,40 @@ export default function AttendanceMonitorPage() {
     }
   };
 
+  const updateCountdown = (
+    result: AttendanceMonitor
+  ) => {
+    if (!result.qrExpiresAt) {
+      setSeconds(10);
+      return;
+    }
+
+    const remaining = Math.ceil(
+      (
+        new Date(
+          result.qrExpiresAt
+        ).getTime() -
+        Date.now()
+      ) / 1000
+    );
+
+    setSeconds(
+      Math.max(0, remaining)
+    );
+  };
+
   useEffect(() => {
     load();
 
+    /*
+     * The backend automatically rotates the QR after
+     * expiration. We only refresh the monitor state
+     * every 2 seconds instead of hitting it every second.
+     */
     const timer =
       window.setInterval(
         load,
-        1000
+        2000
       );
 
     return () =>
@@ -69,35 +83,24 @@ export default function AttendanceMonitorPage() {
   useEffect(() => {
     if (
       !monitor?.active ||
-      !monitor.currentQrToken
+      !monitor.currentQrToken ||
+      !monitor.qrExpiresAt
     ) {
       return;
     }
 
-    if (seconds <= 0) {
-      rotateAttendanceQr()
-        .then((result) => {
-          setMonitor(result);
+    const timer =
+      window.setInterval(() => {
+        updateCountdown(monitor);
+      }, 500);
 
-          if (result.qrExpiresAt) {
-            const remaining =
-              Math.ceil(
-                (
-                  new Date(result.qrExpiresAt).getTime() -
-                  Date.now()
-                ) / 1000
-              );
-
-            setSeconds(
-              Math.max(0, remaining)
-            );
-          } else {
-            setSeconds(10);
-          }
-        })
-        .catch(console.error);
-    }
-  }, [seconds, monitor?.active, monitor?.currentQrToken]);
+    return () =>
+      window.clearInterval(timer);
+  }, [
+    monitor?.active,
+    monitor?.currentQrToken,
+    monitor?.qrExpiresAt,
+  ]);
 
   if (loading) {
     return (
@@ -145,7 +148,7 @@ export default function AttendanceMonitorPage() {
             </p>
 
             <div className="mt-5 text-6xl md:text-8xl font-black tracking-[0.2em]">
-              {monitor?.activationCode || '------'}
+              {monitor.activationCode || '------'}
             </div>
 
           </div>
@@ -155,7 +158,7 @@ export default function AttendanceMonitorPage() {
             <RefreshCw className="h-4 w-4" />
 
             <span>
-              This code is managed by the attendance server
+              Waiting for authorized activation
             </span>
 
           </div>
