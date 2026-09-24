@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import {
+  RefreshCw,
+  ShieldCheck,
+  Wifi,
+} from 'lucide-react';
 
 import {
   getAttendanceMonitor,
   type AttendanceMonitor,
 } from '@/services/attendanceQrService';
 
-import {
-  RefreshCw,
-  ShieldCheck,
-  Wifi,
-} from 'lucide-react';
+const QR_SECONDS = 10;
 
 export default function AttendanceMonitorPage() {
   const [monitor, setMonitor] =
@@ -20,9 +21,9 @@ export default function AttendanceMonitorPage() {
     useState(true);
 
   const [seconds, setSeconds] =
-    useState(10);
+    useState(QR_SECONDS);
 
-  const load = async () => {
+  const loadMonitor = async () => {
     try {
       const result =
         await getAttendanceMonitor();
@@ -32,7 +33,7 @@ export default function AttendanceMonitorPage() {
       updateCountdown(result);
     } catch (error) {
       console.error(
-        'Attendance monitor error',
+        'Attendance monitor error:',
         error
       );
     } finally {
@@ -43,8 +44,11 @@ export default function AttendanceMonitorPage() {
   const updateCountdown = (
     result: AttendanceMonitor
   ) => {
-    if (!result.qrExpiresAt) {
-      setSeconds(10);
+    if (
+      !result.active ||
+      !result.qrExpiresAt
+    ) {
+      setSeconds(QR_SECONDS);
       return;
     }
 
@@ -63,16 +67,11 @@ export default function AttendanceMonitorPage() {
   };
 
   useEffect(() => {
-    load();
+    loadMonitor();
 
-    /*
-     * The backend automatically rotates the QR after
-     * expiration. We only refresh the monitor state
-     * every 2 seconds instead of hitting it every second.
-     */
     const timer =
       window.setInterval(
-        load,
+        loadMonitor,
         2000
       );
 
@@ -83,7 +82,6 @@ export default function AttendanceMonitorPage() {
   useEffect(() => {
     if (
       !monitor?.active ||
-      !monitor.currentQrToken ||
       !monitor.qrExpiresAt
     ) {
       return;
@@ -98,7 +96,6 @@ export default function AttendanceMonitorPage() {
       window.clearInterval(timer);
   }, [
     monitor?.active,
-    monitor?.currentQrToken,
     monitor?.qrExpiresAt,
   ]);
 
@@ -111,11 +108,14 @@ export default function AttendanceMonitorPage() {
   }
 
   /*
-   * INACTIVE
+   * ============================================================
+   * INACTIVE MONITOR
+   * ============================================================
    */
 
   if (
-    !monitor?.active ||
+    !monitor ||
+    !monitor.active ||
     !monitor.currentQrToken
   ) {
     return (
@@ -148,7 +148,7 @@ export default function AttendanceMonitorPage() {
             </p>
 
             <div className="mt-5 text-6xl md:text-8xl font-black tracking-[0.2em]">
-              {monitor.activationCode || '------'}
+              {monitor?.activationCode || '------'}
             </div>
 
           </div>
@@ -169,7 +169,9 @@ export default function AttendanceMonitorPage() {
   }
 
   /*
-   * ACTIVE
+   * ============================================================
+   * ACTIVE MONITOR
+   * ============================================================
    */
 
   return (

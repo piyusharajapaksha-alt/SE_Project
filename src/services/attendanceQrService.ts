@@ -2,9 +2,9 @@ import { apiRequest } from './apiClient';
 
 export interface AttendanceMonitor {
   id: number;
-  activationCode: string;
+  activationCode: string | null;
   active: boolean;
-  activationType: 'MANUAL' | 'SCHEDULE' | string;
+  activationType: string;
   activatedBy: string | null;
   activatedAt: string | null;
   deactivatedAt: string | null;
@@ -47,13 +47,13 @@ export interface AttendanceEvent {
 
 export interface AttendanceSummary {
   date: string;
-  activeEmployees: number;
-  employeesOnLeave: number;
-  expectedEmployees: number;
+  expected: number;
   attended: number;
+  notAttended: number;
+  onLeave: number;
+  late: number;
   checkedOut: number;
   currentlyWorking: number;
-  late: number;
 }
 
 export interface AttendanceSchedule {
@@ -95,7 +95,7 @@ export async function activateAttendanceMonitor(
 }
 
 export async function deactivateAttendanceMonitor(
-  user?: string,
+  user = 'SYSTEM',
   type: 'MANUAL' | 'SCHEDULE' = 'MANUAL'
 ): Promise<void> {
   await apiRequest(
@@ -103,7 +103,7 @@ export async function deactivateAttendanceMonitor(
     {
       method: 'POST',
       body: {
-        user: user || 'SYSTEM',
+        user,
         type,
       },
     }
@@ -119,15 +119,6 @@ export async function rotateAttendanceQr(): Promise<AttendanceMonitor> {
   );
 }
 
-/*
- * Employee QR scan.
- *
- * employeeId may be:
- * - numeric database ID
- * - EMP001 style employee number
- *
- * Backend will resolve both.
- */
 export async function scanAttendanceQr(
   employeeId: string | number,
   token: string
@@ -147,15 +138,11 @@ export async function scanAttendanceQr(
 export async function getEmployeeTodayAttendance(
   employeeId: string | number
 ): Promise<AttendanceRecord | null> {
-  try {
-    return await apiRequest<AttendanceRecord | null>(
-      `/api/attendance/employee/${encodeURIComponent(
-        String(employeeId)
-      )}/today`
-    );
-  } catch {
-    return null;
-  }
+  return apiRequest<AttendanceRecord | null>(
+    `/api/attendance/employee/${encodeURIComponent(
+      String(employeeId)
+    )}/today`
+  );
 }
 
 export async function getEmployeeAttendanceHistory(
