@@ -112,6 +112,11 @@ export default function App() {
 
           <Routes>
 
+            <Route
+              path="/qrmonitor"
+              element={<AttendanceMonitorPage />}
+            />
+
 
             {/* ==================================================
                 PUBLIC AUTH ROUTES
@@ -292,8 +297,8 @@ export default function App() {
                   </PermissionRoute>
                 }
               />
-              
-              
+
+
 
 
               {/* Training Management */}
