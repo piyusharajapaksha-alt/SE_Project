@@ -1,10 +1,5 @@
-// ============================================================
-// STAFFHUB API CLIENT
-// Handles communication between React and Spring Boot backend
-// ============================================================
-
 const getDefaultApiBaseUrl = (): string => {
-  // If VITE_API_BASE_URL is configured, always use it.
+
   const configuredUrl =
     import.meta.env.VITE_API_BASE_URL?.trim();
 
@@ -12,25 +7,15 @@ const getDefaultApiBaseUrl = (): string => {
     return configuredUrl.replace(/\/+$/, '');
   }
 
-  // IMPORTANT:
-  // Using "localhost" breaks when the frontend is opened
-  // from another laptop/phone.
-  //
-  // Example:
-  // Frontend: http://172.28.10.25:5173
-  // Backend:  http://172.28.10.25:8080
-  //
-  // window.location.hostname automatically becomes
-  // 172.28.10.25.
   if (typeof window !== 'undefined') {
     return `http://${window.location.hostname}:8080`;
   }
 
-  // Fallback for non-browser environments.
   return 'http://localhost:8080';
 };
 
-export const API_BASE_URL = getDefaultApiBaseUrl();
+export const API_BASE_URL =
+  getDefaultApiBaseUrl();
 
 interface RequestOptions {
   method?: string;
@@ -39,6 +24,7 @@ interface RequestOptions {
 }
 
 export class ApiError extends Error {
+
   status: number;
   responseBody: unknown;
 
@@ -47,24 +33,46 @@ export class ApiError extends Error {
     status: number,
     responseBody: unknown = null
   ) {
+
     super(message);
+
     this.name = 'ApiError';
+
     this.status = status;
-    this.responseBody = responseBody;
+
+    this.responseBody =
+      responseBody;
   }
 }
 
-// ============================================================
-// API REQUEST
-// ============================================================
+function getCsrfToken(): string | null {
+
+  const cookie =
+    document.cookie
+      .split(';')
+      .map((item) => item.trim())
+      .find((item) =>
+        item.startsWith('XSRF-TOKEN=')
+      );
+
+  if (!cookie) {
+    return null;
+  }
+
+  return decodeURIComponent(
+    cookie.substring('XSRF-TOKEN='.length)
+  );
+}
 
 export async function apiRequest<T>(
   endpoint: string,
   options: RequestOptions = {}
 ): Promise<T> {
-  const cleanEndpoint = endpoint.startsWith('/')
-    ? endpoint
-    : `/${endpoint}`;
+
+  const cleanEndpoint =
+    endpoint.startsWith('/')
+      ? endpoint
+      : `/${endpoint}`;
 
   const url =
     `${API_BASE_URL}${cleanEndpoint}`;
@@ -72,28 +80,58 @@ export async function apiRequest<T>(
   const method =
     options.method || 'GET';
 
-  console.log(
-    `[StaffHub API] ${method} ${url}`
-  );
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    ...options.headers,
+  };
+
+  // ==========================================================
+  // CSRF HEADER
+  // ==========================================================
+
+  const unsafeMethods = [
+    'POST',
+    'PUT',
+    'PATCH',
+    'DELETE',
+  ];
+
+  if (unsafeMethods.includes(method.toUpperCase())) {
+
+    const csrfToken =
+      getCsrfToken();
+
+    if (csrfToken) {
+      headers['X-XSRF-TOKEN'] =
+        csrfToken;
+    }
+  }
 
   let response: Response;
 
   try {
-    response = await fetch(url, {
-      method,
 
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        ...options.headers,
-      },
+    response = await fetch(
+      url,
+      {
+        method,
 
-      body:
-        options.body !== undefined
-          ? JSON.stringify(options.body)
-          : undefined,
-    });
+        headers,
+
+        // IMPORTANT:
+        // Sends JSESSIONID cookie to Spring Boot.
+        credentials: 'include',
+
+        body:
+          options.body !== undefined
+            ? JSON.stringify(options.body)
+            : undefined,
+      }
+    );
+
   } catch (error) {
+
     console.error(
       '[StaffHub API] Network error:',
       error
@@ -101,46 +139,52 @@ export async function apiRequest<T>(
 
     throw new ApiError(
       `Cannot connect to StaffHub backend at ${API_BASE_URL}. ` +
-        'Make sure the backend is running and accessible from this device.',
+      'Make sure the backend is running and accessible.',
       0,
       null
     );
   }
 
   // ==========================================================
-  // ERROR RESPONSE
+  // ERROR
   // ==========================================================
 
   if (!response.ok) {
+
     const responseText =
       await response.text();
 
-    let responseBody: any = null;
+    let responseBody: unknown = null;
 
     try {
-      responseBody = responseText
-        ? JSON.parse(responseText)
-        : null;
+
+      responseBody =
+        responseText
+          ? JSON.parse(responseText)
+          : null;
+
     } catch {
-      responseBody = responseText;
+
+      responseBody =
+        responseText;
     }
 
-    const backendMessage =
+    let message =
+      `API request failed with status ${response.status}`;
+
+    if (
       responseBody &&
       typeof responseBody === 'object' &&
+      'message' in responseBody &&
       typeof responseBody.message === 'string'
-        ? responseBody.message
-        : typeof responseBody === 'string'
-          ? responseBody
-          : `API request failed with status ${response.status}`;
+    ) {
 
-    console.error(
-      `[StaffHub API] ${response.status} ${method} ${url}`,
-      responseBody
-    );
+      message =
+        responseBody.message;
+    }
 
     throw new ApiError(
-      backendMessage,
+      message,
       response.status,
       responseBody
     );
@@ -161,25 +205,22 @@ export async function apiRequest<T>(
     return undefined as T;
   }
 
-  // ==========================================================
-  // JSON RESPONSE
-  // ==========================================================
-
   try {
-    return JSON.parse(responseText) as T;
+
+    return JSON.parse(
+      responseText
+    ) as T;
+
   } catch {
-    // Backend returned plain text.
+
     return responseText as T;
   }
 }
 
-// ============================================================
-// GET FULL API URL
-// ============================================================
-
 export function getApiUrl(
   endpoint: string
 ): string {
+
   const cleanEndpoint =
     endpoint.startsWith('/')
       ? endpoint

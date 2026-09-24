@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
-import { getDemoAccounts } from '@/services/authService';
 import { Eye, EyeOff, Loader2, LogIn } from 'lucide-react';
 
 export default function LoginPage() {
@@ -15,7 +14,7 @@ export default function LoginPage() {
   const { login } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
-  const demoAccounts = getDemoAccounts();
+ 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,10 +35,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleDemoLogin = (demoEmail: string) => {
-    setEmail(demoEmail);
-    setPassword('demo123');
-  };
 
   return (
     <div>
@@ -119,21 +114,7 @@ export default function LoginPage() {
         </button>
       </form>
 
-      {/* Demo accounts - DEVELOPMENT ONLY */}
-      <div className="mt-8 pt-6 border-t border-gray-200">
-        <p className="text-xs text-gray-500 mb-3 text-center">Demo Accounts (Development Only)</p>
-        <div className="grid grid-cols-2 gap-2">
-          {demoAccounts.map((acc) => (
-            <button
-              key={acc.email}
-              onClick={() => handleDemoLogin(acc.email)}
-              className="px-3 py-2 text-xs bg-gray-50 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-200 rounded-lg text-gray-700 hover:text-indigo-700 transition-colors text-left"
-            >
-              <span className="font-medium">{acc.role}</span>
-            </button>
-          ))}
-        </div>
-      </div>
+      
     </div>
   );
 }

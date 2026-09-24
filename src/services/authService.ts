@@ -1,9 +1,4 @@
-// ============================================================
-// STAFFHUB AUTH SERVICE
-// DEVELOPMENT ONLY: authentication remains mocked until the
-// Spring Boot authentication API is ready.
-// No application/business data is mocked here.
-// ============================================================
+import { apiRequest } from '@/services/apiClient';
 
 export interface AuthUser {
   id: string;
@@ -22,175 +17,237 @@ export interface CurrentUser extends AuthUser {
   status: string;
 }
 
-interface MockAuthAccount extends AuthUser {
-  password: string;
+interface BackendAuthUser {
+  id: number;
+  employeeId: number;
+  email: string;
+  role: string;
+  employeeNumber: string;
   firstName: string;
   lastName: string;
   department: string;
   position: string;
   phone: string;
-  avatar: string | null;
   status: string;
 }
 
-// The ONLY mock data intentionally kept in the frontend.
-// These accounts exist only so the UI can be tested before backend auth exists.
-const mockAuthAccounts: MockAuthAccount[] = [
-  {
-    id: 'USR001',
-    email: 'tharindu.j@example.com',
-    password: 'demo123',
-    role: 'Employee',
-    employeeId: 'EMP001',
-    firstName: 'Demo',
-    lastName: 'Employee',
-    department: 'Engineering',
-    position: 'Software Engineer',
-    phone: '',
+interface LoginResponse extends BackendAuthUser {}
+
+const AUTH_USER_KEY = 'staffhub_auth';
+
+function mapBackendUser(user: BackendAuthUser): CurrentUser {
+  return {
+    id: String(user.id),
+    email: user.email,
+    role: user.role,
+    employeeId: user.employeeNumber || String(user.employeeId),
+
+    firstName: user.firstName,
+    lastName: user.lastName,
+    department: user.department,
+    position: user.position,
+    phone: user.phone || '',
     avatar: null,
-    status: 'Active',
-  },
-  {
-    id: 'USR002',
-    email: 'hr@staffhub.com',
-    password: 'demo123',
-    role: 'HR Manager',
-    employeeId: 'EMP002',
-    firstName: 'Demo',
-    lastName: 'HR Manager',
-    department: 'Human Resources',
-    position: 'HR Manager',
-    phone: '',
-    avatar: null,
-    status: 'Active',
-  },
-  {
-    id: 'USR003',
-    email: 'manager@staffhub.com',
-    password: 'demo123',
-    role: 'Department Manager',
-    employeeId: 'EMP003',
-    firstName: 'Demo',
-    lastName: 'Department Manager',
-    department: 'Human Resources',
-    position: 'Department Manager',
-    phone: '',
-    avatar: null,
-    status: 'Active',
-  },
-  {
-    id: 'USR004',
-    email: 'training@staffhub.com',
-    password: 'demo123',
-    role: 'Training Coordinator',
-    employeeId: 'EMP004',
-    firstName: 'Demo',
-    lastName: 'Training Coordinator',
-    department: 'Human Resources',
-    position: 'Training Coordinator',
-    phone: '',
-    avatar: null,
-    status: 'Active',
-  },
-  {
-    id: 'USR005',
-    email: 'grievance@staffhub.com',
-    password: 'demo123',
-    role: 'Grievance Officer',
-    employeeId: 'EMP005',
-    firstName: 'Demo',
-    lastName: 'Grievance Officer',
-    department: 'Human Resources',
-    position: 'Grievance Officer',
-    phone: '',
-    avatar: null,
-    status: 'Active',
-  },
-  {
-    id: 'USR006',
-    email: 'event@staffhub.com',
-    password: 'demo123',
-    role: 'Event Organizer',
-    employeeId: 'EMP006',
-    firstName: 'Demo',
-    lastName: 'Event Organizer',
-    department: 'Human Resources',
-    position: 'Event Organizer',
-    phone: '',
-    avatar: null,
-    status: 'Active',
-  },
-];
+    status: user.status || 'Active',
+  };
+}
+
+// ============================================================
+// CSRF
+// ============================================================
+
+function getCookie(name: string): string | null {
+  const cookies = document.cookie.split(';');
+
+  for (const cookie of cookies) {
+    const [key, ...valueParts] = cookie.trim().split('=');
+
+    if (key === name) {
+      return decodeURIComponent(valueParts.join('='));
+    }
+  }
+
+  return null;
+}
+
+export async function initializeCsrf(): Promise<void> {
+  await apiRequest<void>('/api/auth/csrf', {
+    method: 'GET',
+  });
+}
+
+export function getCsrfToken(): string | null {
+  return getCookie('XSRF-TOKEN');
+}
+
+// ============================================================
+// LOGIN
+// ============================================================
 
 export async function login(
   email: string,
   password: string,
-): Promise<{ user: AuthUser; token: string }> {
-  const account = mockAuthAccounts.find(
-    (item) => item.email === email.trim().toLowerCase() && item.password === password,
+): Promise<{
+  user: AuthUser;
+}> {
+
+  // Make sure the browser has a CSRF token
+  // before the login POST request.
+  await initializeCsrf();
+
+  const csrfToken = getCsrfToken();
+
+  const result = await apiRequest<LoginResponse>(
+    '/api/auth/login',
+    {
+      method: 'POST',
+
+      headers: csrfToken
+        ? {
+            'X-XSRF-TOKEN': csrfToken,
+          }
+        : undefined,
+
+      body: {
+        email: email.trim().toLowerCase(),
+        password,
+      },
+    }
   );
 
-  if (!account) {
-    throw new Error('Invalid email or password');
-  }
+  const user = mapBackendUser(result);
 
-  const { password: _password, ...user } = account;
+  saveUser(user);
 
-  return {
-    user,
-    token: `mock-auth-token-${account.id}`,
-  };
+  // Spring Security rotates/clears the CSRF token
+  // around authentication, so obtain a fresh one.
+  await initializeCsrf();
+
+  return { user };
 }
 
-export async function getCurrentUser(employeeId: string): Promise<CurrentUser> {
-  const account = mockAuthAccounts.find((item) => item.employeeId === employeeId);
+// ============================================================
+// CURRENT USER
+// ============================================================
 
-  if (!account) {
-    throw new Error('Authenticated user profile not found');
-  }
+export async function getCurrentUser(): Promise<CurrentUser> {
 
-  const { password: _password, ...profile } = account;
-  return profile;
+  const result = await apiRequest<BackendAuthUser>(
+    '/api/auth/me',
+    {
+      method: 'GET',
+    }
+  );
+
+  const user = mapBackendUser(result);
+
+  saveUser(user);
+
+  return user;
 }
+
+// ============================================================
+// LOGOUT
+// ============================================================
 
 export async function logout(): Promise<void> {
-  localStorage.removeItem('staffhub_auth');
-  localStorage.removeItem('staffhub_token');
-}
 
-export async function forgotPassword(_email: string): Promise<{ success: boolean; message: string }> {
-  return {
-    success: true,
-    message: 'If an account with this email exists, a reset link has been sent.',
-  };
-}
-
-export async function resetPassword(_token: string, _newPassword: string): Promise<{ success: boolean }> {
-  return { success: true };
-}
-
-export function saveSession(user: AuthUser, token: string): void {
-  localStorage.setItem('staffhub_auth', JSON.stringify(user));
-  localStorage.setItem('staffhub_token', token);
-}
-
-export function getSavedSession(): { user: AuthUser; token: string } | null {
-  const authStr = localStorage.getItem('staffhub_auth');
-  const token = localStorage.getItem('staffhub_token');
-
-  if (!authStr || !token) return null;
+  const csrfToken = getCsrfToken();
 
   try {
-    return { user: JSON.parse(authStr) as AuthUser, token };
+
+    await apiRequest<void>(
+      '/api/auth/logout',
+      {
+        method: 'POST',
+
+        headers: csrfToken
+          ? {
+              'X-XSRF-TOKEN': csrfToken,
+            }
+          : undefined,
+      }
+    );
+
+  } finally {
+
+    localStorage.removeItem(AUTH_USER_KEY);
+
+    document.cookie =
+      'XSRF-TOKEN=; Max-Age=0; path=/;';
+  }
+}
+
+// ============================================================
+// LOCAL USER CACHE
+// ============================================================
+
+export function saveUser(user: AuthUser): void {
+
+  localStorage.setItem(
+    AUTH_USER_KEY,
+    JSON.stringify(user)
+  );
+}
+
+export function getSavedUser(): AuthUser | null {
+
+  const value =
+    localStorage.getItem(AUTH_USER_KEY);
+
+  if (!value) {
+    return null;
+  }
+
+  try {
+
+    return JSON.parse(value) as AuthUser;
+
   } catch {
+
+    localStorage.removeItem(AUTH_USER_KEY);
+
     return null;
   }
 }
 
-export function hasSession(): boolean {
-  return Boolean(localStorage.getItem('staffhub_auth'));
+export function clearSavedUser(): void {
+  localStorage.removeItem(AUTH_USER_KEY);
 }
 
-export function getDemoAccounts(): { email: string; role: string }[] {
-  return mockAuthAccounts.map(({ email, role }) => ({ email, role }));
+export function hasSession(): boolean {
+  return Boolean(getSavedUser());
+}
+
+// ============================================================
+// PASSWORD RESET
+// ============================================================
+//
+// Password reset is intentionally not mocked anymore.
+// A real email/reset-token workflow should be connected before
+// showing "reset link sent" as a real email operation.
+// ============================================================
+
+export async function forgotPassword(
+  _email: string
+): Promise<{
+  success: boolean;
+  message: string;
+}> {
+
+  throw new Error(
+    'Password reset email service is not configured yet. Please contact your HR administrator.'
+  );
+}
+
+export async function resetPassword(
+  _token: string,
+  _newPassword: string
+): Promise<{
+  success: boolean;
+}> {
+
+  throw new Error(
+    'Password reset service is not configured yet.'
+  );
 }
