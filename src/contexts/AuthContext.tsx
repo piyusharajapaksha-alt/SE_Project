@@ -41,7 +41,11 @@ interface AuthContextType {
   login: (
     email: string,
     password: string
-  ) => Promise<void>;
+  ) => Promise<authService.CurrentUser>;
+
+  register: (
+    payload: authService.RegisterPayload
+  ) => Promise<authService.CurrentUser>;
   logout: () => Promise<void>;
   checkPermission: (
     permission: PermissionType
@@ -159,7 +163,7 @@ export function AuthProvider({
     async (
       email: string,
       password: string
-    ) => {
+    ): Promise<authService.CurrentUser> => {
 
       const result =
         await authService.login(
@@ -172,7 +176,38 @@ export function AuthProvider({
       const currentUser =
         await authService.getCurrentUser();
 
+      setUser(currentUser);
+
       setProfile(currentUser);
+
+      return currentUser;
+
+    },
+    []
+  );
+
+  // ==========================================================
+  // REGISTER COMPANY OWNER
+  // ==========================================================
+
+  const register = useCallback(
+    async (
+      payload: authService.RegisterPayload
+    ): Promise<authService.CurrentUser> => {
+
+      const result =
+        await authService.register(payload);
+
+      setUser(result.user);
+
+      const currentUser =
+        await authService.getCurrentUser();
+
+      setUser(currentUser);
+
+      setProfile(currentUser);
+
+      return currentUser;
 
     },
     []
@@ -255,6 +290,7 @@ export function AuthProvider({
         isAuthenticated: !!user,
         isLoading,
         login,
+        register,
         logout,
         checkPermission,
         refreshProfile,

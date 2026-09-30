@@ -14,7 +14,7 @@ export default function LoginPage() {
   const { login } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
- 
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,9 +25,19 @@ export default function LoginPage() {
     }
     setIsLoading(true);
     try {
-      await login(email, password);
-      addToast('success', 'Welcome back! You have been logged in successfully.');
-      navigate('/dashboard');
+      const authenticatedUser =
+        await login(email, password);
+
+      addToast(
+        'success',
+        'Welcome back! You have been logged in successfully.'
+      );
+
+      if (authenticatedUser.role === 'Owner') {
+        navigate('/owner');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err: any) {
       setError(err.message || 'Login failed');
     } finally {
@@ -114,7 +124,7 @@ export default function LoginPage() {
         </button>
       </form>
 
-      
+
     </div>
   );
 }

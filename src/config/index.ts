@@ -24,6 +24,7 @@ export const ROLES = {
   TRAINING_COORD: 'Training Coordinator',
   GRIEVANCE_OFFICER: 'Grievance Officer',
   EVENT_ORGANIZER: 'Event Organizer',
+  OWNER: 'Owner',
 } as const;
 
 export type RoleType = (typeof ROLES)[keyof typeof ROLES];
@@ -32,6 +33,10 @@ export type RoleType = (typeof ROLES)[keyof typeof ROLES];
 // Permissions
 // ------------------------------------------------------------
 export const PERMISSIONS = {
+  // Owner
+  'owner.dashboard': [ROLES.OWNER],
+  'owner.company': [ROLES.OWNER],
+
   // Employee management
   'employees.view': [ROLES.HR_MANAGER, ROLES.DEPT_MANAGER],
   'employees.create': [ROLES.HR_MANAGER],
@@ -129,6 +134,27 @@ export interface NavigationItem {
 // MAIN and PERSONAL are common navigation for every authenticated user.
 // Management items use DIFFERENT /management/* paths and permissions.
 export const NAV_ITEMS: NavigationItem[] = [
+  // OWNER MANAGEMENT
+  {
+    key: 'owner-dashboard',
+    label: 'Owner Dashboard',
+    icon: 'LayoutDashboard',
+    path: '/owner',
+    group: 'management',
+    permission: 'owner.dashboard',
+  },
+  {
+    key: 'owner-company',
+    label: 'Company',
+    icon: 'Building2',
+    path: '/owner/company',
+    group: 'management',
+    permission: 'owner.company',
+  },
+
+  // MANAGEMENT - role/permission based pages
+
+
   // MAIN - employee-level pages for every authenticated user
   { key: 'dashboard', label: 'Dashboard', icon: 'LayoutDashboard', path: '/dashboard', group: 'main' },
   { key: 'attendance', label: 'Attendance', icon: 'Clock', path: '/attendance', group: 'main' },
@@ -156,6 +182,8 @@ export const NAV_ITEMS: NavigationItem[] = [
 
 export function getManagementLabel(role: RoleType): string | null {
   switch (role) {
+    case ROLES.OWNER:
+      return 'OWNER MANAGEMENT';
     case ROLES.HR_MANAGER:
       return 'HR MANAGEMENT';
     case ROLES.DEPT_MANAGER:

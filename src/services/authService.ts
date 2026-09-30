@@ -33,6 +33,22 @@ interface BackendAuthUser {
 
 interface LoginResponse extends BackendAuthUser {}
 
+export interface RegisterPayload {
+  companyName: string;
+  companyEmail: string;
+  companyPhone: string;
+  companyAddress: string;
+  industry: string;
+
+  ownerFirstName: string;
+  ownerLastName: string;
+  ownerEmail: string;
+  ownerPhone: string;
+
+  password: string;
+  confirmPassword: string;
+}
+
 const AUTH_USER_KEY = 'staffhub_auth';
 
 function mapBackendUser(user: BackendAuthUser): CurrentUser {
@@ -125,6 +141,50 @@ export async function login(
 
   return { user };
 }
+
+
+// ============================================================
+// REGISTER COMPANY OWNER
+// ============================================================
+
+export async function register(
+  payload: RegisterPayload,
+): Promise<{
+  user: AuthUser;
+}> {
+
+  // Make sure the browser has a CSRF token
+  // before the registration POST request.
+  await initializeCsrf();
+
+  const csrfToken = getCsrfToken();
+
+  const result = await apiRequest<LoginResponse>(
+    '/api/auth/register',
+    {
+      method: 'POST',
+
+      headers: csrfToken
+        ? {
+            'X-XSRF-TOKEN': csrfToken,
+          }
+        : undefined,
+
+      body: payload,
+    }
+  );
+
+  const user = mapBackendUser(result);
+
+  saveUser(user);
+
+  // Spring Security creates the authenticated session
+  // during registration. Get a fresh CSRF token afterward.
+  await initializeCsrf();
+
+  return { user };
+}
+
 
 // ============================================================
 // CURRENT USER

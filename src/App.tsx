@@ -60,6 +60,12 @@ import ProfilePage from '@/pages/profile/ProfilePage';
 import SettingsPage from '@/pages/settings/SettingsPage';
 
 
+import RegisterPage from '@/pages/auth/RegisterPage';
+import LandingPage from '@/pages/LandingPage';
+
+// Owner
+import OwnerDashboardPage from '@/pages/owner/OwnerDashboardPage';
+import OwnerCompanyPage from '@/pages/owner/OwnerCompanyPage';
 
 // ============================================================
 // 404
@@ -122,11 +128,25 @@ export default function App() {
                 PUBLIC AUTH ROUTES
                 ================================================== */}
 
+            {/* ==================================================
+    PUBLIC ROUTES
+    ================================================== */}
+
+            <Route
+              path="/"
+              element={<LandingPage />}
+            />
+
             <Route element={<AuthLayout />}>
 
               <Route
                 path="/login"
                 element={<LoginPage />}
+              />
+
+              <Route
+                path="/register"
+                element={<RegisterPage />}
               />
 
               <Route
@@ -148,6 +168,22 @@ export default function App() {
                 </ProtectedRoute>
               }
             >
+
+              {/* ==================================================
+    OWNER
+    ================================================== */}
+
+              <Route
+                path="/owner"
+                element={<OwnerDashboardPage />}
+              />
+
+              <Route
+                path="/owner/company"
+                element={<OwnerCompanyPage />}
+              />
+
+
 
 
               {/* ==================================================
@@ -355,7 +391,7 @@ export default function App() {
                 DEFAULT
                 ================================================== */}
 
-            <Route
+            {/*<Route
               path="/"
               element={
                 <Navigate
@@ -363,7 +399,7 @@ export default function App() {
                   replace
                 />
               }
-            />
+            />*/}
 
 
             {/* ==================================================

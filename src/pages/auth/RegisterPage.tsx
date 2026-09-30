@@ -41,8 +41,16 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await register(form);
-      addToast('success', 'Account created', 'Your company owner account is ready.');
-      navigate('/dashboard', { replace: true });
+
+      addToast(
+        'success',
+        'Account created',
+        'Your company owner account is ready.'
+      );
+
+      navigate('/owner', {
+        replace: true,
+      });
     } catch (err: any) {
       setError(err?.message || 'Registration failed.');
     } finally {
@@ -97,7 +105,43 @@ export default function RegisterPage() {
             {input('ownerEmail', 'Email address', 'email', true)}
             {input('ownerPhone', 'Phone')}
             <div className="relative">
-              {input('password', 'Password', 'password', true)}
+
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Password<span className="text-red-500"> *</span>
+                </label>
+
+                <div className="relative">
+
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={form.password}
+                    onChange={(e) =>
+                      update('password', e.target.value)
+                    }
+                    disabled={loading}
+                    className="w-full px-3 py-2.5 pr-10 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowPassword(!showPassword)
+                    }
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+
+                </div>
+              </div>
+
+
               <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 bottom-2.5 text-gray-400">
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>

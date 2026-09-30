@@ -1,3 +1,4 @@
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatCard } from '@/components/ui';
 import {
@@ -22,7 +23,8 @@ type DashboardRole =
   | 'Department Manager'
   | 'Training Coordinator'
   | 'Event Organizer'
-  | 'Grievance Officer';
+  | 'Grievance Officer'
+  | 'Owner';
 
 function EmptyState({
   icon,
@@ -109,6 +111,9 @@ export default function DashboardPage() {
   const role = user.role as DashboardRole;
 
   switch (role) {
+   case 'Owner':
+    return <Navigate to="/owner" replace/>;
+
     case 'HR Manager':
       return <HRDashboard />;
 
