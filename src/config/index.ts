@@ -38,10 +38,10 @@ export const PERMISSIONS = {
   'owner.company': [ROLES.OWNER],
 
   // Employee management
-  'employees.view': [ROLES.HR_MANAGER, ROLES.DEPT_MANAGER],
-  'employees.create': [ROLES.HR_MANAGER],
-  'employees.edit': [ROLES.HR_MANAGER],
-  'employees.delete': [ROLES.HR_MANAGER],
+  'employees.view': [ROLES.HR_MANAGER, ROLES.DEPT_MANAGER, ROLES.OWNER],
+  'employees.create': [ROLES.HR_MANAGER, ROLES.OWNER],
+  'employees.edit': [ROLES.HR_MANAGER, ROLES.OWNER],
+  'employees.delete': [ROLES.HR_MANAGER, ROLES.OWNER],
   'employees.view-all': [ROLES.HR_MANAGER],
   'employees.view-dept': [ROLES.DEPT_MANAGER],
 
