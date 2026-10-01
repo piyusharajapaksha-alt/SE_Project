@@ -63,7 +63,7 @@ interface BackendAuthUser {
 }
 
 interface LoginResponse
-  extends BackendAuthUser {}
+  extends BackendAuthUser { }
 
 export interface RegisterPayload {
 
@@ -294,6 +294,10 @@ export async function getCurrentUser():
     mapBackendUser(result);
 
   saveUser(user);
+
+  // Restore CSRF token after a browser refresh.
+  // The CSRF token is intentionally kept only in memory.
+  await initializeCsrf();
 
   return user;
 }

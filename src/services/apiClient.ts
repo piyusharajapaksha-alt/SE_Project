@@ -129,7 +129,7 @@ export async function apiRequest<T>(
 
     if (token) {
 
-      headers['X-XSRF-TOKEN'] =
+      headers['X-CSRF-TOKEN'] =
         token;
     }
   }
