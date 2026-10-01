@@ -1,99 +1,188 @@
-import { apiRequest } from '@/services/apiClient';
+import {
+  apiRequest,
+  setCsrfToken,
+  clearCsrfToken,
+} from '@/services/apiClient';
+
+// ============================================================
+// TYPES
+// ============================================================
 
 export interface AuthUser {
+
   id: string;
+
   email: string;
+
   role: string;
+
   employeeId: string;
 }
 
-export interface CurrentUser extends AuthUser {
+export interface CurrentUser
+  extends AuthUser {
+
   firstName: string;
+
   lastName: string;
+
   department: string;
+
   position: string;
+
   phone: string;
+
   avatar: string | null;
+
   status: string;
 }
 
 interface BackendAuthUser {
+
   id: number;
+
   employeeId: number;
+
   email: string;
+
   role: string;
+
   employeeNumber: string;
+
   firstName: string;
+
   lastName: string;
+
   department: string;
+
   position: string;
+
   phone: string;
+
   status: string;
 }
 
-interface LoginResponse extends BackendAuthUser {}
+interface LoginResponse
+  extends BackendAuthUser {}
 
 export interface RegisterPayload {
+
   companyName: string;
+
   companyEmail: string;
+
   companyPhone: string;
+
   companyAddress: string;
+
   industry: string;
 
   ownerFirstName: string;
+
   ownerLastName: string;
+
   ownerEmail: string;
+
   ownerPhone: string;
 
   password: string;
+
   confirmPassword: string;
 }
 
-const AUTH_USER_KEY = 'staffhub_auth';
+interface CsrfResponse {
 
-function mapBackendUser(user: BackendAuthUser): CurrentUser {
+  token: string;
+}
+
+// ============================================================
+// LOCAL USER CACHE
+// ============================================================
+
+const AUTH_USER_KEY =
+  'staffhub_auth';
+
+// ============================================================
+// MAP BACKEND USER
+// ============================================================
+
+function mapBackendUser(
+  user: BackendAuthUser
+): CurrentUser {
+
   return {
-    id: String(user.id),
-    email: user.email,
-    role: user.role,
-    employeeId: user.employeeNumber || String(user.employeeId),
 
-    firstName: user.firstName,
-    lastName: user.lastName,
-    department: user.department,
-    position: user.position,
-    phone: user.phone || '',
-    avatar: null,
-    status: user.status || 'Active',
+    id: String(user.id),
+
+    email: user.email,
+
+    role: user.role,
+
+    employeeId:
+      user.employeeNumber ||
+      String(user.employeeId),
+
+    firstName:
+      user.firstName,
+
+    lastName:
+      user.lastName,
+
+    department:
+      user.department,
+
+    position:
+      user.position,
+
+    phone:
+      user.phone || '',
+
+    avatar:
+      null,
+
+    status:
+      user.status || 'Active',
   };
 }
 
 // ============================================================
 // CSRF
 // ============================================================
-
-function getCookie(name: string): string | null {
-  const cookies = document.cookie.split(';');
-
-  for (const cookie of cookies) {
-    const [key, ...valueParts] = cookie.trim().split('=');
-
-    if (key === name) {
-      return decodeURIComponent(valueParts.join('='));
-    }
-  }
-
-  return null;
-}
+//
+// Always call this:
+//
+// 1. when application starts
+// 2. after login
+// 3. after registration
+//
+// Spring Security can clear the CSRF token during
+// authentication, so obtaining a fresh token afterward
+// is important.
+// ============================================================
 
 export async function initializeCsrf(): Promise<void> {
-  await apiRequest<void>('/api/auth/csrf', {
-    method: 'GET',
-  });
-}
 
-export function getCsrfToken(): string | null {
-  return getCookie('XSRF-TOKEN');
+  const result =
+    await apiRequest<CsrfResponse>(
+      '/api/auth/csrf',
+      {
+        method: 'GET',
+      }
+    );
+
+  if (
+    !result ||
+    !result.token
+  ) {
+
+    throw new Error(
+      'StaffHub backend did not return a CSRF token.'
+    );
+  }
+
+  setCsrfToken(
+    result.token
+  );
 }
 
 // ============================================================
@@ -107,41 +196,46 @@ export async function login(
   user: AuthUser;
 }> {
 
-  // Make sure the browser has a CSRF token
-  // before the login POST request.
+  // CSRF is not required by the backend
+  // for /api/auth/login, but initializing it
+  // here ensures the application has a token.
   await initializeCsrf();
 
-  const csrfToken = getCsrfToken();
+  const result =
+    await apiRequest<LoginResponse>(
+      '/api/auth/login',
+      {
+        method: 'POST',
 
-  const result = await apiRequest<LoginResponse>(
-    '/api/auth/login',
-    {
-      method: 'POST',
+        body: {
 
-      headers: csrfToken
-        ? {
-            'X-XSRF-TOKEN': csrfToken,
-          }
-        : undefined,
+          email:
+            email
+              .trim()
+              .toLowerCase(),
 
-      body: {
-        email: email.trim().toLowerCase(),
-        password,
-      },
-    }
-  );
+          password,
+        },
+      }
+    );
 
-  const user = mapBackendUser(result);
+  const user =
+    mapBackendUser(result);
 
   saveUser(user);
 
-  // Spring Security rotates/clears the CSRF token
-  // around authentication, so obtain a fresh one.
+  // IMPORTANT:
+  //
+  // Spring Security authentication can clear
+  // the previous CSRF token.
+  //
+  // Therefore obtain a fresh token after login.
   await initializeCsrf();
 
-  return { user };
+  return {
+    user,
+  };
 }
-
 
 // ============================================================
 // REGISTER COMPANY OWNER
@@ -153,53 +247,51 @@ export async function register(
   user: AuthUser;
 }> {
 
-  // Make sure the browser has a CSRF token
-  // before the registration POST request.
+  // Prepare a CSRF token/session before
+  // registration.
   await initializeCsrf();
 
-  const csrfToken = getCsrfToken();
+  const result =
+    await apiRequest<LoginResponse>(
+      '/api/auth/register',
+      {
+        method: 'POST',
 
-  const result = await apiRequest<LoginResponse>(
-    '/api/auth/register',
-    {
-      method: 'POST',
+        body: payload,
+      }
+    );
 
-      headers: csrfToken
-        ? {
-            'X-XSRF-TOKEN': csrfToken,
-          }
-        : undefined,
-
-      body: payload,
-    }
-  );
-
-  const user = mapBackendUser(result);
+  const user =
+    mapBackendUser(result);
 
   saveUser(user);
 
-  // Spring Security creates the authenticated session
-  // during registration. Get a fresh CSRF token afterward.
+  // Registration creates the authenticated
+  // session, so get a fresh CSRF token.
   await initializeCsrf();
 
-  return { user };
+  return {
+    user,
+  };
 }
-
 
 // ============================================================
 // CURRENT USER
 // ============================================================
 
-export async function getCurrentUser(): Promise<CurrentUser> {
+export async function getCurrentUser():
+  Promise<CurrentUser> {
 
-  const result = await apiRequest<BackendAuthUser>(
-    '/api/auth/me',
-    {
-      method: 'GET',
-    }
-  );
+  const result =
+    await apiRequest<BackendAuthUser>(
+      '/api/auth/me',
+      {
+        method: 'GET',
+      }
+    );
 
-  const user = mapBackendUser(result);
+  const user =
+    mapBackendUser(result);
 
   saveUser(user);
 
@@ -210,9 +302,8 @@ export async function getCurrentUser(): Promise<CurrentUser> {
 // LOGOUT
 // ============================================================
 
-export async function logout(): Promise<void> {
-
-  const csrfToken = getCsrfToken();
+export async function logout():
+  Promise<void> {
 
   try {
 
@@ -220,21 +311,16 @@ export async function logout(): Promise<void> {
       '/api/auth/logout',
       {
         method: 'POST',
-
-        headers: csrfToken
-          ? {
-              'X-XSRF-TOKEN': csrfToken,
-            }
-          : undefined,
       }
     );
 
   } finally {
 
-    localStorage.removeItem(AUTH_USER_KEY);
+    localStorage.removeItem(
+      AUTH_USER_KEY
+    );
 
-    document.cookie =
-      'XSRF-TOKEN=; Max-Age=0; path=/;';
+    clearCsrfToken();
   }
 }
 
@@ -242,7 +328,9 @@ export async function logout(): Promise<void> {
 // LOCAL USER CACHE
 // ============================================================
 
-export function saveUser(user: AuthUser): void {
+export function saveUser(
+  user: AuthUser
+): void {
 
   localStorage.setItem(
     AUTH_USER_KEY,
@@ -250,42 +338,54 @@ export function saveUser(user: AuthUser): void {
   );
 }
 
-export function getSavedUser(): AuthUser | null {
+export function getSavedUser():
+  AuthUser | null {
 
   const value =
-    localStorage.getItem(AUTH_USER_KEY);
+    localStorage.getItem(
+      AUTH_USER_KEY
+    );
 
   if (!value) {
+
     return null;
   }
 
   try {
 
-    return JSON.parse(value) as AuthUser;
+    return JSON.parse(
+      value
+    ) as AuthUser;
 
   } catch {
 
-    localStorage.removeItem(AUTH_USER_KEY);
+    localStorage.removeItem(
+      AUTH_USER_KEY
+    );
 
     return null;
   }
 }
 
 export function clearSavedUser(): void {
-  localStorage.removeItem(AUTH_USER_KEY);
+
+  localStorage.removeItem(
+    AUTH_USER_KEY
+  );
 }
 
 export function hasSession(): boolean {
-  return Boolean(getSavedUser());
+
+  return Boolean(
+    getSavedUser()
+  );
 }
 
 // ============================================================
 // PASSWORD RESET
 // ============================================================
 //
-// Password reset is intentionally not mocked anymore.
-// A real email/reset-token workflow should be connected before
-// showing "reset link sent" as a real email operation.
+// Password reset is intentionally not mocked.
 // ============================================================
 
 export async function forgotPassword(

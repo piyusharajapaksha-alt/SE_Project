@@ -26,6 +26,7 @@ interface RequestOptions {
 export class ApiError extends Error {
 
   status: number;
+
   responseBody: unknown;
 
   constructor(
@@ -45,24 +46,41 @@ export class ApiError extends Error {
   }
 }
 
-function getCsrfToken(): string | null {
+// ============================================================
+// CSRF TOKEN
+// ============================================================
+//
+// The backend now returns the CSRF token from:
+//
+// GET /api/auth/csrf
+//
+// We keep it in memory.
+//
+// It is intentionally NOT stored in localStorage.
+// ============================================================
 
-  const cookie =
-    document.cookie
-      .split(';')
-      .map((item) => item.trim())
-      .find((item) =>
-        item.startsWith('XSRF-TOKEN=')
-      );
+let csrfToken: string | null = null;
 
-  if (!cookie) {
-    return null;
-  }
+export function setCsrfToken(
+  token: string | null
+): void {
 
-  return decodeURIComponent(
-    cookie.substring('XSRF-TOKEN='.length)
-  );
+  csrfToken = token;
 }
+
+export function getCsrfToken(): string | null {
+
+  return csrfToken;
+}
+
+export function clearCsrfToken(): void {
+
+  csrfToken = null;
+}
+
+// ============================================================
+// API REQUEST
+// ============================================================
 
 export async function apiRequest<T>(
   endpoint: string,
@@ -81,8 +99,11 @@ export async function apiRequest<T>(
     options.method || 'GET';
 
   const headers: Record<string, string> = {
+
     'Content-Type': 'application/json',
+
     Accept: 'application/json',
+
     ...options.headers,
   };
 
@@ -97,14 +118,19 @@ export async function apiRequest<T>(
     'DELETE',
   ];
 
-  if (unsafeMethods.includes(method.toUpperCase())) {
+  if (
+    unsafeMethods.includes(
+      method.toUpperCase()
+    )
+  ) {
 
-    const csrfToken =
+    const token =
       getCsrfToken();
 
-    if (csrfToken) {
+    if (token) {
+
       headers['X-XSRF-TOKEN'] =
-        csrfToken;
+        token;
     }
   }
 
@@ -119,8 +145,8 @@ export async function apiRequest<T>(
 
         headers,
 
-        // IMPORTANT:
-        // Sends JSESSIONID cookie to Spring Boot.
+        // Required for the Spring Security
+        // JSESSIONID session cookie.
         credentials: 'include',
 
         body:
@@ -138,9 +164,12 @@ export async function apiRequest<T>(
     );
 
     throw new ApiError(
+
       `Cannot connect to StaffHub backend at ${API_BASE_URL}. ` +
       'Make sure the backend is running and accessible.',
+
       0,
+
       null
     );
   }
@@ -195,6 +224,7 @@ export async function apiRequest<T>(
   // ==========================================================
 
   if (response.status === 204) {
+
     return undefined as T;
   }
 
@@ -202,6 +232,7 @@ export async function apiRequest<T>(
     await response.text();
 
   if (!responseText.trim()) {
+
     return undefined as T;
   }
 
@@ -217,6 +248,10 @@ export async function apiRequest<T>(
   }
 }
 
+// ============================================================
+// API URL
+// ============================================================
+
 export function getApiUrl(
   endpoint: string
 ): string {
@@ -230,7 +265,16 @@ export function getApiUrl(
 }
 
 export default {
+
   apiRequest,
+
   getApiUrl,
+
   API_BASE_URL,
+
+  getCsrfToken,
+
+  setCsrfToken,
+
+  clearCsrfToken,
 };
