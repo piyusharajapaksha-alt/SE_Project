@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { StatCard } from '@/components/ui';
@@ -57,7 +57,7 @@ type DashboardEmployee = {
 
 type AttendanceRecord = {
   id?: number;
-  employeeId?: number;
+  employeeId?: number | string;
   employeeNumber?: string;
   employeeName?: string;
   department?: string;
@@ -69,7 +69,7 @@ type AttendanceRecord = {
 
 type LeaveRecord = {
   id?: number;
-  employeeId?: string;
+  employeeId?: string | number;
   employeeName?: string;
   department?: string;
   type?: string;
@@ -81,7 +81,7 @@ type LeaveRecord = {
 
 type PerformanceRecord = {
   id?: number;
-  employeeId?: string;
+  employeeId?: string | number;
   reviewPeriod?: string;
   overallRating?: number;
   status?: string;
@@ -126,7 +126,7 @@ type EventRecord = {
 
 type GrievanceRecord = {
   id?: number;
-  employeeId?: string;
+  employeeId?: string | number;
   employeeName?: string;
   category?: string;
   priority?: string;
@@ -248,6 +248,50 @@ function getStatusClass(status?: string): string {
   return 'bg-gray-100 text-gray-600';
 }
 
+/*
+ * Safely compares an employee reference.
+ *
+ * StaffHub currently uses employee numbers such as EMP001
+ * in several parts of the frontend, while attendance records
+ * can also contain the numeric database employee id.
+ *
+ * This helper supports both forms.
+ */
+function employeeReferenceMatches(
+  value: string | number | undefined,
+  employeeId?: string | number,
+  employeeNumber?: string,
+): boolean {
+  if (value === undefined || value === null) {
+    return false;
+  }
+
+  const normalizedValue = String(value).trim().toLowerCase();
+
+  if (!normalizedValue) {
+    return false;
+  }
+
+  if (
+    employeeId !== undefined &&
+    employeeId !== null &&
+    normalizedValue ===
+      String(employeeId).trim().toLowerCase()
+  ) {
+    return true;
+  }
+
+  if (
+    employeeNumber &&
+    normalizedValue ===
+      String(employeeNumber).trim().toLowerCase()
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 /* ============================================================
    SAFE API HELPER
    ============================================================ */
@@ -258,7 +302,8 @@ async function safeRequest<T>(
 ): Promise<T> {
   try {
     return await request;
-  } catch {
+  } catch (error) {
+    console.error('StaffHub dashboard request failed:', error);
     return fallback;
   }
 }
@@ -466,11 +511,45 @@ function useDashboardData(user: any) {
       const employeeId =
         String(user.employeeId || '');
 
+      const employeeNumber =
+        String(
+          user.employeeNumber ||
+          user.employeeNo ||
+          '',
+        );
+
       const department =
         String(user.department || '');
 
+      const role =
+        String(user.role || '');
+
       const today =
         todayString();
+
+      /*
+       * IMPORTANT ATTENDANCE LOGIC
+       *
+       * Employee:
+       *   Load this employee's complete attendance history.
+       *
+       * HR Manager / Department Manager:
+       *   Load today's company attendance records.
+       *
+       * Other managers/coordinators:
+       *   Today's attendance is sufficient for the shared
+       *   dashboard data and does not change their layout.
+       */
+      const attendanceRequest =
+        role === 'Employee'
+          ? employeeId
+            ? attendanceService.getByEmployee(
+                employeeId,
+              )
+            : Promise.resolve<AttendanceRecord[]>([])
+          : attendanceService.getAll({
+              date: today,
+            });
 
       const [
         employees,
@@ -489,20 +568,11 @@ function useDashboardData(user: any) {
         ),
 
         safeRequest(
-          attendanceService.getAll({
-            date: today,
-          }),
+          attendanceRequest,
           [],
         ),
 
         safeRequest(
-          // IMPORTANT:
-          // The old dashboard called a nonexistent
-          // employee summary endpoint.
-          //
-          // This is the real backend endpoint.
-          //
-          // /api/attendance/summary?date=YYYY-MM-DD
           import('@/services/apiClient').then(
             ({ apiRequest }) =>
               apiRequest<any>(
@@ -544,12 +614,19 @@ function useDashboardData(user: any) {
 
         employeeId
           ? safeRequest(
-              leaveService.getBalance(employeeId),
+              leaveService.getBalance(
+                employeeId,
+              ),
               null,
             )
           : Promise.resolve(null),
       ]);
 
+      /*
+       * Make sure every returned collection is actually an array.
+       * This prevents a malformed/empty API response from breaking
+       * the complete dashboard.
+       */
       setData({
         employees:
           Array.isArray(employees)
@@ -592,13 +669,11 @@ function useDashboardData(user: any) {
       });
 
       /*
-       * We intentionally do not fail the complete dashboard
-       * when one optional module has no data.
-       *
-       * The existing backend can legitimately return an
-       * empty list for a module.
+       * These values are intentionally retained because the shared
+       * dashboard hook is used by multiple role dashboards.
        */
       void department;
+      void employeeNumber;
     } catch (requestError) {
       console.error(
         'StaffHub dashboard loading error:',
@@ -617,6 +692,8 @@ function useDashboardData(user: any) {
     loadData();
   }, [
     user.employeeId,
+    user.employeeNumber,
+    user.employeeNo,
     user.department,
     user.role,
   ]);
@@ -662,31 +739,49 @@ function EmployeeDashboard({
     );
   }
 
-  const employeeNumber =
+  const employeeId =
     String(user.employeeId || '');
+
+  const employeeNumber =
+    String(
+      user.employeeNumber ||
+      user.employeeNo ||
+      '',
+    );
 
   const myAttendance =
     data.attendance.filter(
       (record) =>
-        String(record.employeeNumber || '')
-          .toLowerCase() ===
-        employeeNumber.toLowerCase(),
+        employeeReferenceMatches(
+          record.employeeNumber,
+          employeeId,
+          employeeNumber,
+        ) ||
+        employeeReferenceMatches(
+          record.employeeId,
+          employeeId,
+          employeeNumber,
+        ),
     );
 
   const myLeaves =
     data.leaves.filter(
       (leave) =>
-        String(leave.employeeId || '')
-          .toLowerCase() ===
-        employeeNumber.toLowerCase(),
+        employeeReferenceMatches(
+          leave.employeeId,
+          employeeId,
+          employeeNumber,
+        ),
     );
 
   const myPerformance =
     data.performance.filter(
       (review) =>
-        String(review.employeeId || '')
-          .toLowerCase() ===
-        employeeNumber.toLowerCase(),
+        employeeReferenceMatches(
+          review.employeeId,
+          employeeId,
+          employeeNumber,
+        ),
     );
 
   const myTraining =
@@ -700,13 +795,19 @@ function EmployeeDashboard({
       return (
         assigned.some(
           (id) =>
-            String(id).toLowerCase() ===
-            employeeNumber.toLowerCase(),
+            employeeReferenceMatches(
+              id,
+              employeeId,
+              employeeNumber,
+            ),
         ) ||
         registered.some(
           (id) =>
-            String(id).toLowerCase() ===
-            employeeNumber.toLowerCase(),
+            employeeReferenceMatches(
+              id,
+              employeeId,
+              employeeNumber,
+            ),
         )
       );
     });
@@ -715,8 +816,11 @@ function EmployeeDashboard({
     data.events.filter((event) =>
       (event.registeredIds || []).some(
         (id) =>
-          String(id).toLowerCase() ===
-          employeeNumber.toLowerCase(),
+          employeeReferenceMatches(
+            id,
+            employeeId,
+            employeeNumber,
+          ),
       ),
     );
 
@@ -729,7 +833,9 @@ function EmployeeDashboard({
   const presentDays =
     myAttendance.filter((record) => {
       const status =
-        String(record.status || '').toLowerCase();
+        String(
+          record.status || '',
+        ).toLowerCase();
 
       return (
         status.includes('present') ||
@@ -1336,7 +1442,7 @@ function HRDashboard() {
                   key={leave.id}
                   title={
                     leave.employeeName ||
-                    leave.employeeId ||
+                    String(leave.employeeId || '') ||
                     'Employee'
                   }
                   subtitle={`${leave.type || 'Leave'} • ${formatDate(
@@ -1361,7 +1467,7 @@ function HRDashboard() {
                   employee.employeeNumber
                 }
                 title={getEmployeeName(employee)}
-                subtitle={`${employee.employeeNumber || ''}${
+                subtitle={`${getEmployeeNumber(employee)}${
                   employee.department
                     ? ` • ${employee.department}`
                     : ''
@@ -1686,7 +1792,7 @@ function DepartmentManagerDashboard({
                   key={leave.id}
                   title={
                     leave.employeeName ||
-                    leave.employeeId ||
+                    String(leave.employeeId || '') ||
                     'Employee'
                   }
                   subtitle={`${leave.type || 'Leave'} • ${formatDate(
@@ -1761,8 +1867,9 @@ function DepartmentManagerDashboard({
                   <DashboardListItem
                     key={review.id}
                     title={
-                      review.employeeId ||
-                      'Employee'
+                      String(
+                        review.employeeId || '',
+                      ) || 'Employee'
                     }
                     subtitle={
                       review.reviewPeriod ||
@@ -2632,7 +2739,9 @@ function GrievanceOfficerDashboard() {
                   key={grievance.id}
                   title={
                     grievance.employeeName ||
-                    grievance.employeeId ||
+                    String(
+                      grievance.employeeId || '',
+                    ) ||
                     'Employee'
                   }
                   subtitle={
@@ -2666,7 +2775,9 @@ function GrievanceOfficerDashboard() {
                   key={grievance.id}
                   title={
                     grievance.employeeName ||
-                    grievance.employeeId ||
+                    String(
+                      grievance.employeeId || '',
+                    ) ||
                     'Employee'
                   }
                   subtitle={
@@ -2724,13 +2835,11 @@ function GrievanceOfficerDashboard() {
 
             <MetricRow
               label="Open cases"
-              value={
-                Math.max(
-                  0,
-                  data.grievances.length -
-                    resolved.length,
-                )
-              }
+              value={Math.max(
+                0,
+                data.grievances.length -
+                  resolved.length,
+              )}
             />
 
             <MetricRow
@@ -2757,7 +2866,9 @@ function GrievanceOfficerDashboard() {
                   key={grievance.id}
                   title={
                     grievance.employeeName ||
-                    grievance.employeeId ||
+                    String(
+                      grievance.employeeId || '',
+                    ) ||
                     'Employee'
                   }
                   subtitle={
