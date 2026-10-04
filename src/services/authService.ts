@@ -4,114 +4,68 @@ import {
   clearCsrfToken,
 } from '@/services/apiClient';
 
-// ============================================================
-// TYPES
-// ============================================================
-
 export interface AuthUser {
-
   id: string;
-
   email: string;
-
   role: string;
-
   employeeId: string;
+  ownerId?: string;
+  accountType: 'OWNER' | 'EMPLOYEE';
 }
 
 export interface CurrentUser
   extends AuthUser {
-
   firstName: string;
-
   lastName: string;
-
   department: string;
-
   position: string;
-
   phone: string;
-
   avatar: string | null;
-
   status: string;
 }
 
 interface BackendAuthUser {
-
   id: number;
-
-  employeeId: number;
-
+  employeeId: number | null;
+  ownerId: number | null;
   email: string;
-
   role: string;
-
-  employeeNumber: string;
-
+  employeeNumber: string | null;
   firstName: string;
-
   lastName: string;
-
-  department: string;
-
-  position: string;
-
-  phone: string;
-
+  department: string | null;
+  position: string | null;
+  phone: string | null;
   status: string;
+  accountType: 'OWNER' | 'EMPLOYEE';
 }
 
-interface LoginResponse
-  extends BackendAuthUser { }
-
 export interface RegisterPayload {
-
   companyName: string;
-
   companyEmail: string;
-
   companyPhone: string;
-
   companyAddress: string;
-
   industry: string;
-
   ownerFirstName: string;
-
   ownerLastName: string;
-
   ownerEmail: string;
-
   ownerPhone: string;
-
   password: string;
-
   confirmPassword: string;
 }
 
 interface CsrfResponse {
-
   token: string;
 }
 
-// ============================================================
-// LOCAL USER CACHE
-// ============================================================
-
 const AUTH_USER_KEY =
   'staffhub_auth';
-
-// ============================================================
-// MAP BACKEND USER
-// ============================================================
 
 function mapBackendUser(
   user: BackendAuthUser
 ): CurrentUser {
 
   return {
-
     id: String(user.id),
 
     email: user.email,
@@ -119,8 +73,17 @@ function mapBackendUser(
     role: user.role,
 
     employeeId:
-      user.employeeNumber ||
-      String(user.employeeId),
+      user.employeeNumber
+        ? user.employeeNumber
+        : '',
+
+    ownerId:
+      user.ownerId != null
+        ? String(user.ownerId)
+        : undefined,
+
+    accountType:
+      user.accountType,
 
     firstName:
       user.firstName,
@@ -129,10 +92,10 @@ function mapBackendUser(
       user.lastName,
 
     department:
-      user.department,
+      user.department || '',
 
     position:
-      user.position,
+      user.position || '',
 
     phone:
       user.phone || '',
@@ -148,17 +111,6 @@ function mapBackendUser(
 // ============================================================
 // CSRF
 // ============================================================
-//
-// Always call this:
-//
-// 1. when application starts
-// 2. after login
-// 3. after registration
-//
-// Spring Security can clear the CSRF token during
-// authentication, so obtaining a fresh token afterward
-// is important.
-// ============================================================
 
 export async function initializeCsrf(): Promise<void> {
 
@@ -170,19 +122,14 @@ export async function initializeCsrf(): Promise<void> {
       }
     );
 
-  if (
-    !result ||
-    !result.token
-  ) {
+  if (!result?.token) {
 
     throw new Error(
       'StaffHub backend did not return a CSRF token.'
     );
   }
 
-  setCsrfToken(
-    result.token
-  );
+  setCsrfToken(result.token);
 }
 
 // ============================================================
@@ -196,19 +143,15 @@ export async function login(
   user: AuthUser;
 }> {
 
-  // CSRF is not required by the backend
-  // for /api/auth/login, but initializing it
-  // here ensures the application has a token.
   await initializeCsrf();
 
   const result =
-    await apiRequest<LoginResponse>(
+    await apiRequest<BackendAuthUser>(
       '/api/auth/login',
       {
         method: 'POST',
 
         body: {
-
           email:
             email
               .trim()
@@ -224,12 +167,6 @@ export async function login(
 
   saveUser(user);
 
-  // IMPORTANT:
-  //
-  // Spring Security authentication can clear
-  // the previous CSRF token.
-  //
-  // Therefore obtain a fresh token after login.
   await initializeCsrf();
 
   return {
@@ -238,7 +175,7 @@ export async function login(
 }
 
 // ============================================================
-// REGISTER COMPANY OWNER
+// REGISTER OWNER
 // ============================================================
 
 export async function register(
@@ -247,16 +184,13 @@ export async function register(
   user: AuthUser;
 }> {
 
-  // Prepare a CSRF token/session before
-  // registration.
   await initializeCsrf();
 
   const result =
-    await apiRequest<LoginResponse>(
+    await apiRequest<BackendAuthUser>(
       '/api/auth/register',
       {
         method: 'POST',
-
         body: payload,
       }
     );
@@ -266,8 +200,6 @@ export async function register(
 
   saveUser(user);
 
-  // Registration creates the authenticated
-  // session, so get a fresh CSRF token.
   await initializeCsrf();
 
   return {
@@ -295,8 +227,6 @@ export async function getCurrentUser():
 
   saveUser(user);
 
-  // Restore CSRF token after a browser refresh.
-  // The CSRF token is intentionally kept only in memory.
   await initializeCsrf();
 
   return user;
@@ -320,16 +250,13 @@ export async function logout():
 
   } finally {
 
-    localStorage.removeItem(
-      AUTH_USER_KEY
-    );
-
+    clearSavedUser();
     clearCsrfToken();
   }
 }
 
 // ============================================================
-// LOCAL USER CACHE
+// LOCAL CACHE
 // ============================================================
 
 export function saveUser(
@@ -351,7 +278,6 @@ export function getSavedUser():
     );
 
   if (!value) {
-
     return null;
   }
 
@@ -363,9 +289,7 @@ export function getSavedUser():
 
   } catch {
 
-    localStorage.removeItem(
-      AUTH_USER_KEY
-    );
+    clearSavedUser();
 
     return null;
   }
@@ -387,9 +311,6 @@ export function hasSession(): boolean {
 
 // ============================================================
 // PASSWORD RESET
-// ============================================================
-//
-// Password reset is intentionally not mocked.
 // ============================================================
 
 export async function forgotPassword(

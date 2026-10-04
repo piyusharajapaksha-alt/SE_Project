@@ -7,7 +7,7 @@ import {
 
 import { AuthProvider } from '@/contexts/AuthContext';
 import { ToastProvider } from '@/contexts/ToastContext';
-import { ProtectedRoute, PermissionRoute } from '@/routes/ProtectedRoute';
+import { ProtectedRoute, PermissionRoute, EmployeeRoute, } from '@/routes/ProtectedRoute';
 
 // Layouts
 import AuthLayout from '@/layouts/AuthLayout';
@@ -192,37 +192,37 @@ export default function App() {
 
               <Route
                 path="/dashboard"
-                element={<DashboardPage />}
+                element={<EmployeeRoute><DashboardPage /></EmployeeRoute>}
               />
 
               <Route
                 path="/attendance"
-                element={<AttendancePage />}
+                element={<EmployeeRoute><AttendancePage /></EmployeeRoute>}
               />
 
               <Route
                 path="/leave"
-                element={<LeavePage />}
+                element={<EmployeeRoute><LeavePage /></EmployeeRoute>}
               />
 
               <Route
                 path="/performance"
-                element={<PerformancePage />}
+                element={<EmployeeRoute><PerformancePage /></EmployeeRoute>}
               />
 
               <Route
                 path="/training"
-                element={<TrainingPage />}
+                element={<EmployeeRoute><TrainingPage /></EmployeeRoute>}
               />
 
               <Route
                 path="/events"
-                element={<EventsPage />}
+                element={<EmployeeRoute><EventsPage /></EmployeeRoute>}
               />
 
               <Route
                 path="/grievances"
-                element={<GrievancesPage />}
+                element={<EmployeeRoute><GrievancesPage /></EmployeeRoute>}
               />
 
 
@@ -232,12 +232,12 @@ export default function App() {
 
               <Route
                 path="/notifications"
-                element={<NotificationsPage />}
+                element={<EmployeeRoute><NotificationsPage /></EmployeeRoute>}
               />
 
               <Route
                 path="/profile"
-                element={<ProfilePage />}
+                element={<EmployeeRoute><ProfilePage /></EmployeeRoute>}
               />
 
               <Route

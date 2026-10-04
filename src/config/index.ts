@@ -200,10 +200,29 @@ export function getManagementLabel(role: RoleType): string | null {
   }
 }
 
-export function getNavigationForRole(role: RoleType): NavigationItem[] {
+export function getNavigationForRole(
+  role: RoleType
+): NavigationItem[] {
+
   return NAV_ITEMS.filter((item) => {
-    if (!item.permission) return true;
-    return hasPermission(role, item.permission);
+
+    // Owner has a separate portal.
+    // Do not show employee-level MAIN pages.
+    if (
+      role === ROLES.OWNER &&
+      item.group === 'main'
+    ) {
+      return false;
+    }
+
+    if (!item.permission) {
+      return true;
+    }
+
+    return hasPermission(
+      role,
+      item.permission
+    );
   });
 }
 

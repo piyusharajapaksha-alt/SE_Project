@@ -21,9 +21,13 @@ interface AuthUser {
   email: string;
   role: string;
   employeeId: string;
+  ownerId?: string;
+  accountType: 'OWNER' | 'EMPLOYEE';
 }
 
-interface UserProfile extends AuthUser {
+interface UserProfile
+  extends AuthUser {
+
   firstName: string;
   lastName: string;
   department: string;
@@ -34,10 +38,15 @@ interface UserProfile extends AuthUser {
 }
 
 interface AuthContextType {
+
   user: AuthUser | null;
+
   profile: UserProfile | null;
+
   isAuthenticated: boolean;
+
   isLoading: boolean;
+
   login: (
     email: string,
     password: string
@@ -46,17 +55,20 @@ interface AuthContextType {
   register: (
     payload: authService.RegisterPayload
   ) => Promise<authService.CurrentUser>;
+
   logout: () => Promise<void>;
+
   checkPermission: (
     permission: PermissionType
   ) => boolean;
+
   refreshProfile: () => Promise<void>;
 }
 
 const AuthContext =
-  createContext<AuthContextType | undefined>(
-    undefined
-  );
+  createContext<
+    AuthContextType | undefined
+  >(undefined);
 
 export function AuthProvider({
   children,
@@ -74,34 +86,7 @@ export function AuthProvider({
     useState(true);
 
   // ==========================================================
-  // LOAD CURRENT AUTHENTICATED USER
-  // ==========================================================
-
-  const loadCurrentUser =
-    useCallback(async () => {
-
-      try {
-
-        const currentUser =
-          await authService.getCurrentUser();
-
-        setUser(currentUser);
-
-        setProfile(currentUser);
-
-      } catch {
-
-        authService.clearSavedUser();
-
-        setUser(null);
-
-        setProfile(null);
-      }
-
-    }, []);
-
-  // ==========================================================
-  // INITIAL AUTH CHECK
+  // INITIAL SESSION CHECK
   // ==========================================================
 
   useEffect(() => {
@@ -113,10 +98,16 @@ export function AuthProvider({
 
         try {
 
-          await authService.initializeCsrf();
+          /*
+           * IMPORTANT:
+           *
+           * The server session is the source
+           * of truth.
+           */
 
           const currentUser =
-            await authService.getCurrentUser();
+            await authService
+              .getCurrentUser();
 
           if (!mounted) {
             return;
@@ -132,7 +123,8 @@ export function AuthProvider({
             return;
           }
 
-          authService.clearSavedUser();
+          authService
+            .clearSavedUser();
 
           setUser(null);
 
@@ -143,7 +135,6 @@ export function AuthProvider({
           if (mounted) {
             setIsLoading(false);
           }
-
         }
       };
 
@@ -159,89 +150,19 @@ export function AuthProvider({
   // LOGIN
   // ==========================================================
 
-  const login = useCallback(
-    async (
-      email: string,
-      password: string
-    ): Promise<authService.CurrentUser> => {
+  const login =
+    useCallback(
+      async (
+        email: string,
+        password: string
+      ): Promise<authService.CurrentUser> => {
 
-      const result =
-        await authService.login(
-          email,
-          password
-        );
+        const result =
+          await authService.login(
+            email,
+            password);
 
-      setUser(result.user);
-
-      const currentUser =
-        await authService.getCurrentUser();
-
-      setUser(currentUser);
-
-      setProfile(currentUser);
-
-      return currentUser;
-
-    },
-    []
-  );
-
-  // ==========================================================
-  // REGISTER COMPANY OWNER
-  // ==========================================================
-
-  const register = useCallback(
-    async (
-      payload: authService.RegisterPayload
-    ): Promise<authService.CurrentUser> => {
-
-      const result =
-        await authService.register(payload);
-
-      setUser(result.user);
-
-      const currentUser =
-        await authService.getCurrentUser();
-
-      setUser(currentUser);
-
-      setProfile(currentUser);
-
-      return currentUser;
-
-    },
-    []
-  );
-
-  // ==========================================================
-  // LOGOUT
-  // ==========================================================
-
-  const logout = useCallback(
-    async () => {
-
-      await authService.logout();
-
-      setUser(null);
-
-      setProfile(null);
-
-    },
-    []
-  );
-
-  // ==========================================================
-  // REFRESH PROFILE
-  // ==========================================================
-
-  const refreshProfile =
-    useCallback(async () => {
-
-      if (!user) {
-        return;
-      }
-
-      try {
+        setUser(result.user);
 
         const currentUser =
           await authService.getCurrentUser();
@@ -250,14 +171,91 @@ export function AuthProvider({
 
         setProfile(currentUser);
 
-      } catch {
+        return currentUser;
+      },
+      []
+    );
+
+  // ==========================================================
+  // REGISTER OWNER
+  // ==========================================================
+
+  const register =
+    useCallback(
+      async (
+        payload: authService.RegisterPayload
+      ): Promise<authService.CurrentUser> => {
+
+        const result =
+          await authService.register(
+            payload);
+
+        setUser(result.user);
+
+        const currentUser =
+          await authService.getCurrentUser();
+
+        setUser(currentUser);
+
+        setProfile(currentUser);
+
+        return currentUser;
+      },
+      []
+    );
+
+  // ==========================================================
+  // LOGOUT
+  // ==========================================================
+
+  const logout =
+    useCallback(
+      async () => {
+
+        await authService.logout();
 
         setUser(null);
 
         setProfile(null);
-      }
+      },
+      []
+    );
 
-    }, [user]);
+  // ==========================================================
+  // REFRESH
+  // ==========================================================
+
+  const refreshProfile =
+    useCallback(
+      async () => {
+
+        if (!user) {
+          return;
+        }
+
+        try {
+
+          const currentUser =
+            await authService
+              .getCurrentUser();
+
+          setUser(currentUser);
+
+          setProfile(currentUser);
+
+        } catch {
+
+          authService
+            .clearSavedUser();
+
+          setUser(null);
+
+          setProfile(null);
+        }
+
+      },
+      [user]
+    );
 
   // ==========================================================
   // PERMISSIONS
@@ -275,9 +273,7 @@ export function AuthProvider({
 
         return hasPermission(
           user.role as RoleType,
-          permission
-        );
-
+          permission);
       },
       [user]
     );
@@ -287,7 +283,8 @@ export function AuthProvider({
       value={{
         user,
         profile,
-        isAuthenticated: !!user,
+        isAuthenticated:
+          !!user,
         isLoading,
         login,
         register,
@@ -307,6 +304,7 @@ export function useAuth() {
     useContext(AuthContext);
 
   if (!context) {
+
     throw new Error(
       'useAuth must be used within AuthProvider'
     );
