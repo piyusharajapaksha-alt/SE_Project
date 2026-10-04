@@ -143,6 +143,7 @@ export interface AttendanceSchedule {
  *
  * If monitorId is omitted, backend creates a new monitor.
  */
+
 export async function getAttendanceMonitor(
   monitorId?: number
 ): Promise<AttendanceMonitor> {
@@ -153,10 +154,21 @@ export async function getAttendanceMonitor(
         )}`
       : '';
 
-  return apiRequest<AttendanceMonitor>(
-    `/api/attendance/monitor${query}`
-  );
+  const result =
+    await apiRequest<AttendanceMonitor>(
+      `/api/attendance/monitor${query}`
+    );
+
+  if (!result) {
+    throw new Error(
+      'Attendance monitor API returned an empty response.'
+    );
+  }
+
+  return result;
 }
+
+
 
 /**
  * Get all monitors accepted by the
