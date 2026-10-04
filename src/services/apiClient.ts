@@ -1,7 +1,5 @@
 const getDefaultApiBaseUrl = (): string => {
-
-  const configuredUrl =
-    import.meta.env.VITE_API_BASE_URL?.trim();
+  const configuredUrl = import.meta.env.VITE_API_BASE_URL?.trim();
 
   if (configuredUrl) {
     return configuredUrl.replace(/\/+$/, '');
