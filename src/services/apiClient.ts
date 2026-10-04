@@ -1,31 +1,88 @@
 const getDefaultApiBaseUrl = (): string => {
-  const configuredUrl = import.meta.env.VITE_API_BASE_URL?.trim();
-
-  if (configuredUrl) {
-    return configuredUrl.replace(/\/+$/, '');
-  }
+  /*
+   * ============================================================
+   * PRODUCTION
+   * ============================================================
+   *
+   * When StaffHub is hosted on HTTPS/Vercel, API requests must
+   * use the same origin:
+   *
+   *   https://sestaffhub.vercel.app/api/...
+   *
+   * Vercel rewrites /api/* to the Spring Boot backend.
+   *
+   * IMPORTANT:
+   * Do NOT use:
+   *
+   *   http://sestaffhub.vercel.app:8080
+   *
+   * in production.
+   */
 
   if (typeof window !== 'undefined') {
-    return `http://${window.location.hostname}:8080`;
+
+    const hostname =
+      window.location.hostname;
+
+    /*
+     * Local development.
+     */
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1'
+    ) {
+
+      const configuredUrl =
+        import.meta.env.VITE_API_BASE_URL?.trim();
+
+      if (configuredUrl) {
+        return configuredUrl.replace(
+          /\/+$/,
+          ''
+        );
+      }
+
+      return `http://${hostname}:8080`;
+    }
+
+    /*
+     * Production / Vercel.
+     *
+     * Empty base URL means:
+     *
+     *   /api/auth/login
+     *
+     * instead of:
+     *
+     *   http://hostname:8080/api/auth/login
+     */
+    return '';
   }
 
-  return 'http://localhost:8080';
+  return '';
 };
+
 
 export const API_BASE_URL =
   getDefaultApiBaseUrl();
 
+
 interface RequestOptions {
+
   method?: string;
+
   body?: unknown;
+
   headers?: Record<string, string>;
 }
+
 
 export class ApiError extends Error {
 
   status: number;
 
   responseBody: unknown;
+
 
   constructor(
     message: string,
@@ -35,46 +92,48 @@ export class ApiError extends Error {
 
     super(message);
 
-    this.name = 'ApiError';
+    this.name =
+      'ApiError';
 
-    this.status = status;
+    this.status =
+      status;
 
     this.responseBody =
       responseBody;
   }
 }
 
+
 // ============================================================
 // CSRF TOKEN
 // ============================================================
-//
-// The backend now returns the CSRF token from:
-//
-// GET /api/auth/csrf
-//
-// We keep it in memory.
-//
-// It is intentionally NOT stored in localStorage.
-// ============================================================
 
-let csrfToken: string | null = null;
+let csrfToken:
+  string | null = null;
+
 
 export function setCsrfToken(
   token: string | null
 ): void {
 
-  csrfToken = token;
+  csrfToken =
+    token;
 }
 
-export function getCsrfToken(): string | null {
+
+export function getCsrfToken():
+  string | null {
 
   return csrfToken;
 }
 
+
 export function clearCsrfToken(): void {
 
-  csrfToken = null;
+  csrfToken =
+    null;
 }
+
 
 // ============================================================
 // API REQUEST
@@ -90,23 +149,51 @@ export async function apiRequest<T>(
       ? endpoint
       : `/${endpoint}`;
 
+
+  /*
+   * ==========================================================
+   * IMPORTANT
+   * ==========================================================
+   *
+   * Production:
+   *
+   * API_BASE_URL = ''
+   *
+   * Therefore:
+   *
+   *   /api/auth/me
+   *
+   * remains:
+   *
+   *   /api/auth/me
+   *
+   * Vercel then rewrites that request to the Spring Boot
+   * backend through Cloudflare Tunnel.
+   */
+
   const url =
     `${API_BASE_URL}${cleanEndpoint}`;
+
 
   const method =
     options.method || 'GET';
 
-  const headers: Record<string, string> = {
 
-    'Content-Type': 'application/json',
+  const headers:
+    Record<string, string> = {
 
-    Accept: 'application/json',
+    'Content-Type':
+      'application/json',
+
+    Accept:
+      'application/json',
 
     ...options.headers,
   };
 
+
   // ==========================================================
-  // CSRF HEADER
+  // CSRF
   // ==========================================================
 
   const unsafeMethods = [
@@ -115,6 +202,7 @@ export async function apiRequest<T>(
     'PATCH',
     'DELETE',
   ];
+
 
   if (
     unsafeMethods.includes(
@@ -125,34 +213,48 @@ export async function apiRequest<T>(
     const token =
       getCsrfToken();
 
+
     if (token) {
 
-      headers['X-CSRF-TOKEN'] =
-        token;
+      headers[
+        'X-CSRF-TOKEN'
+      ] = token;
     }
   }
 
+
+  // ==========================================================
+  // FETCH
+  // ==========================================================
+
   let response: Response;
+
 
   try {
 
-    response = await fetch(
-      url,
-      {
-        method,
+    response =
+      await fetch(
+        url,
+        {
+          method,
 
-        headers,
+          headers,
 
-        // Required for the Spring Security
-        // JSESSIONID session cookie.
-        credentials: 'include',
+          /*
+           * Required for Spring Security
+           * JSESSIONID authentication.
+           */
+          credentials:
+            'include',
 
-        body:
-          options.body !== undefined
-            ? JSON.stringify(options.body)
-            : undefined,
-      }
-    );
+          body:
+            options.body !== undefined
+              ? JSON.stringify(
+                  options.body
+                )
+              : undefined,
+        }
+      );
 
   } catch (error) {
 
@@ -161,10 +263,11 @@ export async function apiRequest<T>(
       error
     );
 
+
     throw new ApiError(
 
-      `Cannot connect to StaffHub backend at ${API_BASE_URL}. ` +
-      'Make sure the backend is running and accessible.',
+      `Cannot connect to StaffHub backend. ` +
+      `Make sure the backend and Cloudflare Tunnel are running.`,
 
       0,
 
@@ -172,8 +275,9 @@ export async function apiRequest<T>(
     );
   }
 
+
   // ==========================================================
-  // ERROR
+  // ERROR RESPONSE
   // ==========================================================
 
   if (!response.ok) {
@@ -181,13 +285,18 @@ export async function apiRequest<T>(
     const responseText =
       await response.text();
 
-    let responseBody: unknown = null;
+
+    let responseBody:
+      unknown = null;
+
 
     try {
 
       responseBody =
         responseText
-          ? JSON.parse(responseText)
+          ? JSON.parse(
+              responseText
+            )
           : null;
 
     } catch {
@@ -196,8 +305,10 @@ export async function apiRequest<T>(
         responseText;
     }
 
+
     let message =
       `API request failed with status ${response.status}`;
+
 
     if (
       responseBody &&
@@ -210,6 +321,7 @@ export async function apiRequest<T>(
         responseBody.message;
     }
 
+
     throw new ApiError(
       message,
       response.status,
@@ -217,22 +329,34 @@ export async function apiRequest<T>(
     );
   }
 
+
   // ==========================================================
   // NO CONTENT
   // ==========================================================
 
-  if (response.status === 204) {
+  if (
+    response.status === 204
+  ) {
 
     return undefined as T;
   }
+
 
   const responseText =
     await response.text();
 
-  if (!responseText.trim()) {
+
+  if (
+    !responseText.trim()
+  ) {
 
     return undefined as T;
   }
+
+
+  // ==========================================================
+  // JSON
+  // ==========================================================
 
   try {
 
@@ -245,6 +369,7 @@ export async function apiRequest<T>(
     return responseText as T;
   }
 }
+
 
 // ============================================================
 // API URL
@@ -259,8 +384,12 @@ export function getApiUrl(
       ? endpoint
       : `/${endpoint}`;
 
-  return `${API_BASE_URL}${cleanEndpoint}`;
+
+  return `${
+    API_BASE_URL
+  }${cleanEndpoint}`;
 }
+
 
 export default {
 
