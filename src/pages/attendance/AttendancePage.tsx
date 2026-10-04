@@ -1,6 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { PageHeader, StatCard } from '@/components/ui';
+import {
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+
+import {
+  useAuth,
+} from '@/contexts/AuthContext';
+
+import {
+  PageHeader,
+  StatCard,
+} from '@/components/ui';
+
 import {
   Clock,
   QrCode,
@@ -10,22 +22,30 @@ import {
   X,
   RefreshCw,
 } from 'lucide-react';
+
 import {
   getEmployeeTodayAttendance,
   getEmployeeAttendanceHistory,
   scanAttendanceQr,
   type AttendanceRecord,
 } from '@/services/attendanceQrService';
-import { Html5Qrcode } from 'html5-qrcode';
+
+import {
+  Html5Qrcode,
+} from 'html5-qrcode';
 
 export default function AttendancePage() {
   const { user } = useAuth();
 
   const [today, setToday] =
-    useState<AttendanceRecord | null>(null);
+    useState<AttendanceRecord | null>(
+      null
+    );
 
   const [history, setHistory] =
-    useState<AttendanceRecord[]>([]);
+    useState<AttendanceRecord[]>(
+      []
+    );
 
   const [loading, setLoading] =
     useState(true);
@@ -40,7 +60,9 @@ export default function AttendancePage() {
     useState('');
 
   const scannerRef =
-    useRef<Html5Qrcode | null>(null);
+    useRef<Html5Qrcode | null>(
+      null
+    );
 
   const loadingRef =
     useRef(false);
@@ -49,6 +71,10 @@ export default function AttendancePage() {
     user?.employeeId
       ? String(user.employeeId)
       : '';
+
+  // ============================================================
+  // LOAD ATTENDANCE
+  // ============================================================
 
   const loadAttendance = async () => {
     if (!employeeIdentifier) {
@@ -66,13 +92,23 @@ export default function AttendancePage() {
         getEmployeeTodayAttendance(
           employeeIdentifier
         ),
+
         getEmployeeAttendanceHistory(
           employeeIdentifier
         ),
       ]);
 
-      setToday(todayRecord);
-      setHistory(attendanceHistory);
+      setToday(
+        todayRecord
+      );
+
+      setHistory(
+        Array.isArray(
+          attendanceHistory
+        )
+          ? attendanceHistory
+          : []
+      );
     } catch (error) {
       console.error(
         'Failed to load attendance:',
@@ -84,8 +120,14 @@ export default function AttendancePage() {
   };
 
   useEffect(() => {
-    loadAttendance();
-  }, [employeeIdentifier]);
+    void loadAttendance();
+  }, [
+    employeeIdentifier,
+  ]);
+
+  // ============================================================
+  // STOP SCANNER
+  // ============================================================
 
   const stopScanner = async () => {
     const scanner =
@@ -98,10 +140,9 @@ export default function AttendancePage() {
     }
 
     try {
-      const state =
-        scanner.getState();
-
-      if (state === 2) {
+      if (
+        scanner.getState() === 2
+      ) {
         await scanner.stop();
       }
     } catch (error) {
@@ -126,6 +167,10 @@ export default function AttendancePage() {
     setScannerOpen(false);
   };
 
+  // ============================================================
+  // HANDLE QR
+  // ============================================================
+
   const handleQrScan = async (
     decodedText: string
   ) => {
@@ -140,23 +185,75 @@ export default function AttendancePage() {
 
     try {
       setScanMessage(
+        'Reading attendance QR...'
+      );
+
+      // --------------------------------------------------------
+      // QR JSON
+      // --------------------------------------------------------
+
+      let qrData: {
+        monitorId?: number;
+        token?: string;
+      };
+
+      try {
+        qrData =
+          JSON.parse(
+            decodedText.trim()
+          );
+      } catch {
+        throw new Error(
+          'Invalid StaffHub attendance QR code.'
+        );
+      }
+
+      const monitorId =
+        Number(
+          qrData.monitorId
+        );
+
+      const token =
+        typeof qrData.token ===
+        'string'
+          ? qrData.token.trim()
+          : '';
+
+      if (
+        !Number.isInteger(
+          monitorId
+        ) ||
+        monitorId <= 0
+      ) {
+        throw new Error(
+          'Attendance monitor information is missing from the QR code.'
+        );
+      }
+
+      if (!token) {
+        throw new Error(
+          'Attendance QR token is missing.'
+        );
+      }
+
+      setScanMessage(
         'Processing attendance...'
       );
 
-      /*
-       * The QR contains the current backend-generated
-       * QR token.
-       *
-       * Backend resolves EMP001 / EMP002 etc.
-       * to the numeric employees.id.
-       */
+      // --------------------------------------------------------
+      // SEND TO BACKEND
+      // --------------------------------------------------------
+
       const record =
         await scanAttendanceQr(
           employeeIdentifier,
-          decodedText.trim()
+          monitorId,
+          token
         );
 
-      setToday(record);
+      setToday(
+        record
+      );
 
       setScanMessage(
         record.checkOut
@@ -166,10 +263,6 @@ export default function AttendancePage() {
 
       await stopScanner();
 
-      /*
-       * Reload the latest history after
-       * successful check-in/check-out.
-       */
       await loadAttendance();
     } catch (error) {
       console.error(
@@ -182,104 +275,130 @@ export default function AttendancePage() {
           ? error.message
           : 'Unable to mark attendance.';
 
-      setScanMessage(message);
+      setScanMessage(
+        message
+      );
     } finally {
-      loadingRef.current = false;
+      loadingRef.current =
+        false;
     }
   };
+
+  // ============================================================
+  // START SCANNER
+  // ============================================================
 
   const startScanner = async () => {
     if (!employeeIdentifier) {
       setScanMessage(
         'Employee ID is not available.'
       );
+
       return;
     }
 
     setScanMessage('');
+
     setScannerOpen(true);
+
     setScanning(false);
 
-    /*
-     * Give the scanner container time to
-     * appear in the DOM.
-     */
-    window.setTimeout(async () => {
-      try {
-        const scanner =
-          new Html5Qrcode(
-            'attendance-qr-reader'
+    window.setTimeout(
+      async () => {
+        try {
+          const scanner =
+            new Html5Qrcode(
+              'attendance-qr-reader'
+            );
+
+          scannerRef.current =
+            scanner;
+
+          await scanner.start(
+            {
+              facingMode:
+                'environment',
+            },
+            {
+              fps: 10,
+
+              qrbox: {
+                width: 250,
+                height: 250,
+              },
+
+              aspectRatio: 1,
+            },
+            async (
+              decodedText
+            ) => {
+              await handleQrScan(
+                decodedText
+              );
+            },
+            () => {
+              // Normal camera scanning errors
+              // are ignored.
+            }
           );
 
-        scannerRef.current =
-          scanner;
+          setScanning(true);
+        } catch (error) {
+          console.error(
+            'Unable to start QR scanner:',
+            error
+          );
 
-        await scanner.start(
-          {
-            facingMode: 'environment',
-          },
-          {
-            fps: 10,
-            qrbox: {
-              width: 250,
-              height: 250,
-            },
-            aspectRatio: 1,
-          },
-          async (
-            decodedText
-          ) => {
-            await handleQrScan(
-              decodedText
-            );
-          },
-          () => {
-            /*
-             * Ignore normal QR scan-frame
-             * errors while the camera is searching.
-             */
+          setScanMessage(
+            'Unable to access the camera. Please allow camera permission and try again.'
+          );
+
+          try {
+            scannerRef.current?.clear();
+          } catch {
+            // Ignore cleanup error.
           }
-        );
 
-        setScanning(true);
-      } catch (error) {
-        console.error(
-          'Unable to start QR scanner:',
-          error
-        );
+          scannerRef.current =
+            null;
 
-        setScanMessage(
-          'Unable to access the camera. Please allow camera permission and try again.'
-        );
-
-        try {
-          scannerRef.current?.clear();
-        } catch {
-          // Ignore cleanup errors.
+          setScanning(false);
         }
-
-        scannerRef.current = null;
-        setScanning(false);
-      }
-    }, 100);
+      },
+      100
+    );
   };
+
+  // ============================================================
+  // CLEANUP
+  // ============================================================
 
   useEffect(() => {
     return () => {
       const scanner =
         scannerRef.current;
 
-      if (scanner) {
-        try {
-          if (scanner.getState() === 2) {
-            scanner.stop().catch(() => {});
-          }
-        } catch {
-          // Ignore cleanup errors.
+      if (!scanner) {
+        return;
+      }
+
+      try {
+        if (
+          scanner.getState() === 2
+        ) {
+          scanner
+            .stop()
+            .catch(() => {});
         }
+      } catch {
+        // Ignore cleanup errors.
       }
     };
   }, []);
+
+  // ============================================================
+  // FORMAT TIME
+  // ============================================================
 
   const formatTime = (
     value: string | null
@@ -291,7 +410,11 @@ export default function AttendancePage() {
     const date =
       new Date(value);
 
-    if (Number.isNaN(date.getTime())) {
+    if (
+      Number.isNaN(
+        date.getTime()
+      )
+    ) {
       return value;
     }
 
@@ -303,6 +426,10 @@ export default function AttendancePage() {
       }
     );
   };
+
+  // ============================================================
+  // FORMAT DATE
+  // ============================================================
 
   const formatDate = (
     value: string
@@ -316,7 +443,11 @@ export default function AttendancePage() {
         `${value}T00:00:00`
       );
 
-    if (Number.isNaN(date.getTime())) {
+    if (
+      Number.isNaN(
+        date.getTime()
+      )
+    ) {
       return value;
     }
 
@@ -330,6 +461,10 @@ export default function AttendancePage() {
     );
   };
 
+  // ============================================================
+  // RENDER
+  // ============================================================
+
   return (
     <div className="space-y-6">
 
@@ -338,9 +473,7 @@ export default function AttendancePage() {
         description="View your attendance records and mark attendance using the StaffHub QR monitor."
       />
 
-      {/* =======================================================
-          TODAY SUMMARY
-      ======================================================= */}
+      {/* TODAY */}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
@@ -380,14 +513,14 @@ export default function AttendancePage() {
 
       </div>
 
-      {/* =======================================================
-          QR ATTENDANCE
-      ======================================================= */}
+      {/* QR ATTENDANCE */}
 
       <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center">
 
         <div className="mx-auto h-14 w-14 rounded-2xl bg-indigo-50 flex items-center justify-center">
+
           <QrCode className="h-7 w-7 text-indigo-600" />
+
         </div>
 
         <h2 className="mt-4 text-xl font-bold text-gray-900">
@@ -395,9 +528,7 @@ export default function AttendancePage() {
         </h2>
 
         <p className="mt-2 text-sm text-gray-500 max-w-lg mx-auto">
-          Scan the QR code displayed on the
-          Attendance Monitor to check in or
-          check out.
+          Scan the QR code displayed on the Attendance Monitor to check in or check out.
         </p>
 
         <button
@@ -422,9 +553,7 @@ export default function AttendancePage() {
 
       </div>
 
-      {/* =======================================================
-          QR SCANNER
-      ======================================================= */}
+      {/* SCANNER */}
 
       {scannerOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
@@ -434,20 +563,21 @@ export default function AttendancePage() {
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
 
               <div>
+
                 <h2 className="text-lg font-bold text-gray-900">
                   Scan Attendance QR
                 </h2>
 
                 <p className="text-sm text-gray-500 mt-1">
-                  Position the QR code inside
-                  the scanning area.
+                  Position the QR code inside the scanning area.
                 </p>
+
               </div>
 
               <button
                 type="button"
                 onClick={stopScanner}
-                className="h-9 w-9 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                className="h-9 w-9 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -463,8 +593,11 @@ export default function AttendancePage() {
 
               {!scanning && (
                 <div className="mt-4 flex items-center justify-center gap-2 text-sm text-gray-500">
+
                   <RefreshCw className="h-4 w-4 animate-spin" />
+
                   Starting camera...
+
                 </div>
               )}
 
@@ -493,27 +626,32 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {/* =======================================================
-          HISTORY
-      ======================================================= */}
+      {/* HISTORY */}
 
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
 
         <div className="p-6 border-b border-gray-100">
+
           <h2 className="text-lg font-bold text-gray-900">
             Attendance History
           </h2>
+
         </div>
 
         {loading ? (
+
           <div className="p-8 text-center text-gray-500">
             Loading attendance...
           </div>
+
         ) : history.length === 0 ? (
+
           <div className="p-8 text-center text-gray-500">
             No attendance records available.
           </div>
+
         ) : (
+
           <div className="overflow-x-auto">
 
             <table className="w-full text-sm">
@@ -522,19 +660,19 @@ export default function AttendancePage() {
 
                 <tr>
 
-                  <th className="text-left px-6 py-4 font-semibold text-gray-700">
+                  <th className="text-left px-6 py-4">
                     Date
                   </th>
 
-                  <th className="text-left px-6 py-4 font-semibold text-gray-700">
+                  <th className="text-left px-6 py-4">
                     Check In
                   </th>
 
-                  <th className="text-left px-6 py-4 font-semibold text-gray-700">
+                  <th className="text-left px-6 py-4">
                     Check Out
                   </th>
 
-                  <th className="text-left px-6 py-4 font-semibold text-gray-700">
+                  <th className="text-left px-6 py-4">
                     Status
                   </th>
 
@@ -551,19 +689,19 @@ export default function AttendancePage() {
                       className="border-t border-gray-100"
                     >
 
-                      <td className="px-6 py-4 text-gray-900">
+                      <td className="px-6 py-4">
                         {formatDate(
                           record.attendanceDate
                         )}
                       </td>
 
-                      <td className="px-6 py-4 text-gray-700">
+                      <td className="px-6 py-4">
                         {formatTime(
                           record.checkIn
                         )}
                       </td>
 
-                      <td className="px-6 py-4 text-gray-700">
+                      <td className="px-6 py-4">
                         {formatTime(
                           record.checkOut
                         )}
@@ -586,6 +724,7 @@ export default function AttendancePage() {
             </table>
 
           </div>
+
         )}
 
       </div>

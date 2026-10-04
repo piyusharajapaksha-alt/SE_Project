@@ -1,10 +1,16 @@
 import {
+  useCallback,
   useEffect,
   useState,
 } from 'react';
 
-import { useAuth } from '@/contexts/AuthContext';
-import { useToast } from '@/contexts/ToastContext';
+import {
+  useAuth,
+} from '@/contexts/AuthContext';
+
+import {
+  useToast,
+} from '@/contexts/ToastContext';
 
 import {
   PageHeader,
@@ -21,12 +27,17 @@ import {
   CalendarClock,
   Activity,
   Trash2,
+  ShieldCheck,
+  XCircle,
+  Building2,
 } from 'lucide-react';
 
 import {
-  getAttendanceMonitor,
+  getAcceptedAttendanceMonitors,
+  authorizeAttendanceMonitor,
   activateAttendanceMonitor,
   deactivateAttendanceMonitor,
+  rejectAttendanceMonitor,
   rotateAttendanceQr,
   getAttendanceRecords,
   getAttendanceSummary,
@@ -43,22 +54,38 @@ import {
 
 export default function AttendanceManagementPage() {
   const { user } = useAuth();
-  const { addToast } = useToast();
 
-  const [monitor, setMonitor] =
-    useState<AttendanceMonitor | null>(null);
+  const { addToast } =
+    useToast();
+
+  // ============================================================
+  // STATE
+  // ============================================================
+
+  const [monitors, setMonitors] =
+    useState<AttendanceMonitor[]>(
+      []
+    );
 
   const [records, setRecords] =
-    useState<AttendanceRecord[]>([]);
+    useState<AttendanceRecord[]>(
+      []
+    );
 
   const [summary, setSummary] =
-    useState<AttendanceSummary | null>(null);
+    useState<AttendanceSummary | null>(
+      null
+    );
 
   const [events, setEvents] =
-    useState<AttendanceEvent[]>([]);
+    useState<AttendanceEvent[]>(
+      []
+    );
 
   const [schedules, setSchedules] =
-    useState<AttendanceSchedule[]>([]);
+    useState<AttendanceSchedule[]>(
+      []
+    );
 
   const [loading, setLoading] =
     useState(true);
@@ -77,9 +104,11 @@ export default function AttendanceManagementPage() {
     useState('');
 
   const [scheduleType, setScheduleType] =
-    useState<'ONCE' | 'DAILY' | 'WEEKLY'>(
-      'DAILY'
-    );
+    useState<
+      'ONCE' |
+      'DAILY' |
+      'WEEKLY'
+    >('DAILY');
 
   const [scheduleDate, setScheduleDate] =
     useState('');
@@ -96,110 +125,233 @@ export default function AttendanceManagementPage() {
   const [creatingSchedule, setCreatingSchedule] =
     useState(false);
 
-  const load = async () => {
+  const [monitorActionId, setMonitorActionId] =
+    useState<number | null>(
+      null
+    );
+
+  // ============================================================
+  // LOAD
+  // ============================================================
+
+  const load = useCallback(
+    async () => {
+      try {
+        setLoading(true);
+
+        const [
+          monitorData,
+          recordsData,
+          summaryData,
+          eventsData,
+          schedulesData,
+        ] =
+          await Promise.all([
+            getAcceptedAttendanceMonitors(),
+
+            getAttendanceRecords(
+              selectedDate
+            ),
+
+            getAttendanceSummary(
+              selectedDate
+            ),
+
+            getAttendanceEvents(
+              50
+            ),
+
+            getAttendanceSchedules(),
+          ]);
+
+        setMonitors(
+          Array.isArray(
+            monitorData
+          )
+            ? monitorData
+            : []
+        );
+
+        setRecords(
+          Array.isArray(
+            recordsData
+          )
+            ? recordsData
+            : []
+        );
+
+        setSummary(
+          summaryData
+        );
+
+        setEvents(
+          Array.isArray(
+            eventsData
+          )
+            ? eventsData
+            : []
+        );
+
+        setSchedules(
+          Array.isArray(
+            schedulesData
+          )
+            ? schedulesData
+            : []
+        );
+      } catch (error: any) {
+        console.error(
+          'Attendance management error:',
+          error
+        );
+
+        addToast(
+          'error',
+          error?.message ||
+            'Unable to load attendance management data'
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      selectedDate,
+      addToast,
+    ]
+  );
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // ============================================================
+  // AUTO REFRESH
+  // ============================================================
+
+  useEffect(() => {
+    const timer =
+      window.setInterval(
+        () => {
+          void load();
+        },
+        5000
+      );
+
+    return () => {
+      window.clearInterval(
+        timer
+      );
+    };
+  }, [load]);
+
+  // ============================================================
+  // AUTHORIZE MONITOR
+  // ============================================================
+
+  const authorize = async () => {
+    const code =
+      activationCode.trim();
+
+    if (
+      !/^\d{6}$/.test(code)
+    ) {
+      addToast(
+        'error',
+        'Enter the six-digit monitor activation code'
+      );
+
+      return;
+    }
+
     try {
-      setLoading(true);
+      setMonitorActionId(
+        -1
+      );
 
-      const [
-        monitorData,
-        recordsData,
-        summaryData,
-        eventsData,
-        schedulesData,
-      ] = await Promise.all([
-        getAttendanceMonitor(),
-        getAttendanceRecords(selectedDate),
-        getAttendanceSummary(selectedDate),
-        getAttendanceEvents(50),
-        getAttendanceSchedules(),
-      ]);
+      await authorizeAttendanceMonitor(
+        code
+      );
 
-      setMonitor(monitorData);
-      setRecords(recordsData);
-      setSummary(summaryData);
-      setEvents(eventsData);
-      setSchedules(schedulesData);
+      setActivationCode('');
+
+      addToast(
+        'success',
+        'Attendance monitor accepted successfully'
+      );
+
+      await load();
     } catch (error: any) {
       console.error(
-        'Attendance management error:',
+        'Authorize monitor error:',
         error
       );
 
       addToast(
         'error',
         error?.message ||
-          'Unable to load attendance management data'
+          'Invalid or already accepted monitor code'
       );
     } finally {
-      setLoading(false);
+      setMonitorActionId(
+        null
+      );
     }
   };
 
-  useEffect(() => {
-    load();
-  }, [selectedDate]);
+  // ============================================================
+  // ACTIVATE
+  // ============================================================
 
-  useEffect(() => {
-    const timer =
-      window.setInterval(
-        load,
-        5000
-      );
-
-    return () =>
-      window.clearInterval(timer);
-  }, [selectedDate]);
-
-  const activate = async () => {
-    if (!user?.employeeId) {
-      addToast(
-        'error',
-        'Authorized user information was not found'
-      );
-      return;
-    }
-
-    if (
-      !activationCode.trim()
-    ) {
-      addToast(
-        'error',
-        'Enter the six-digit activation code'
-      );
-      return;
-    }
-
+  const activate = async (
+    monitorId: number
+  ) => {
     try {
-      const result =
-        await activateAttendanceMonitor(
-          activationCode.trim(),
-          user.employeeId,
-          'MANUAL'
-        );
+      setMonitorActionId(
+        monitorId
+      );
 
-      setMonitor(result);
-      setActivationCode('');
+      await activateAttendanceMonitor(
+        monitorId
+      );
 
       addToast(
         'success',
-        'Attendance monitor activated successfully'
+        'Attendance monitor activated'
       );
 
       await load();
     } catch (error: any) {
+      console.error(
+        'Activate monitor error:',
+        error
+      );
+
       addToast(
         'error',
         error?.message ||
-          'Invalid activation code'
+          'Unable to activate attendance monitor'
+      );
+    } finally {
+      setMonitorActionId(
+        null
       );
     }
   };
 
-  const deactivate = async () => {
+  // ============================================================
+  // DEACTIVATE
+  // ============================================================
+
+  const deactivate = async (
+    monitorId: number
+  ) => {
     try {
+      setMonitorActionId(
+        monitorId
+      );
+
       await deactivateAttendanceMonitor(
-        user?.employeeId || 'SYSTEM',
-        'MANUAL'
+        monitorId
       );
 
       addToast(
@@ -209,20 +361,38 @@ export default function AttendanceManagementPage() {
 
       await load();
     } catch (error: any) {
+      console.error(
+        'Deactivate monitor error:',
+        error
+      );
+
       addToast(
         'error',
         error?.message ||
           'Unable to deactivate attendance monitor'
       );
+    } finally {
+      setMonitorActionId(
+        null
+      );
     }
   };
 
-  const rotate = async () => {
-    try {
-      const result =
-        await rotateAttendanceQr();
+  // ============================================================
+  // ROTATE
+  // ============================================================
 
-      setMonitor(result);
+  const rotate = async (
+    monitorId: number
+  ) => {
+    try {
+      setMonitorActionId(
+        monitorId
+      );
+
+      await rotateAttendanceQr(
+        monitorId
+      );
 
       addToast(
         'success',
@@ -231,20 +401,86 @@ export default function AttendanceManagementPage() {
 
       await load();
     } catch (error: any) {
+      console.error(
+        'Rotate QR error:',
+        error
+      );
+
       addToast(
         'error',
         error?.message ||
           'Unable to rotate QR code'
       );
+    } finally {
+      setMonitorActionId(
+        null
+      );
     }
   };
 
+  // ============================================================
+  // REJECT
+  // ============================================================
+
+  const reject = async (
+    monitorId: number
+  ) => {
+    const confirmed =
+      window.confirm(
+        'Reject this attendance monitor? It will no longer belong to this company and must be accepted again using its new activation code.'
+      );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setMonitorActionId(
+        monitorId
+      );
+
+      await rejectAttendanceMonitor(
+        monitorId
+      );
+
+      addToast(
+        'success',
+        'Attendance monitor rejected'
+      );
+
+      await load();
+    } catch (error: any) {
+      console.error(
+        'Reject monitor error:',
+        error
+      );
+
+      addToast(
+        'error',
+        error?.message ||
+          'Unable to reject attendance monitor'
+      );
+    } finally {
+      setMonitorActionId(
+        null
+      );
+    }
+  };
+
+  // ============================================================
+  // CREATE SCHEDULE
+  // ============================================================
+
   const createSchedule = async () => {
-    if (!scheduleName.trim()) {
+    const name =
+      scheduleName.trim();
+
+    if (!name) {
       addToast(
         'error',
         'Enter a schedule name'
       );
+
       return;
     }
 
@@ -256,30 +492,59 @@ export default function AttendanceManagementPage() {
         'error',
         'Select a schedule date'
       );
+
+      return;
+    }
+
+    if (
+      !startTime ||
+      !endTime
+    ) {
+      addToast(
+        'error',
+        'Select start and end times'
+      );
+
       return;
     }
 
     try {
-      setCreatingSchedule(true);
+      setCreatingSchedule(
+        true
+      );
 
-      await createAttendanceSchedule({
-        scheduleName:
-          scheduleName.trim(),
-        scheduleType,
-        scheduleDate:
-          scheduleType === 'ONCE'
-            ? scheduleDate
-            : null,
-        dayOfWeek:
-          scheduleType === 'WEEKLY'
-            ? dayOfWeek
-            : null,
-        startTime,
-        endTime,
-        enabled: true,
-        createdBy:
-          user?.employeeId || 'SYSTEM',
-      });
+      await createAttendanceSchedule(
+        {
+          scheduleName:
+            name,
+
+          scheduleType,
+
+          scheduleDate:
+            scheduleType === 'ONCE'
+              ? scheduleDate
+              : null,
+
+          dayOfWeek:
+            scheduleType === 'WEEKLY'
+              ? dayOfWeek
+              : null,
+
+          startTime,
+
+          endTime,
+
+          enabled: true,
+
+          createdBy:
+            user?.employeeId
+              ? String(
+                  user.employeeId
+                )
+              : user?.email ||
+                'SYSTEM',
+        }
+      );
 
       addToast(
         'success',
@@ -288,23 +553,38 @@ export default function AttendanceManagementPage() {
 
       setScheduleName('');
 
+      setScheduleDate('');
+
       await load();
     } catch (error: any) {
+      console.error(
+        'Create schedule error:',
+        error
+      );
+
       addToast(
         'error',
         error?.message ||
           'Unable to create schedule'
       );
     } finally {
-      setCreatingSchedule(false);
+      setCreatingSchedule(
+        false
+      );
     }
   };
+
+  // ============================================================
+  // DELETE SCHEDULE
+  // ============================================================
 
   const removeSchedule = async (
     id: number
   ) => {
     try {
-      await deleteAttendanceSchedule(id);
+      await deleteAttendanceSchedule(
+        id
+      );
 
       addToast(
         'success',
@@ -313,6 +593,11 @@ export default function AttendanceManagementPage() {
 
       await load();
     } catch (error: any) {
+      console.error(
+        'Delete schedule error:',
+        error
+      );
+
       addToast(
         'error',
         error?.message ||
@@ -321,24 +606,29 @@ export default function AttendanceManagementPage() {
     }
   };
 
+  // ============================================================
+  // RENDER
+  // ============================================================
+
   return (
     <div className="space-y-6">
 
       <PageHeader
         title="Attendance Management"
-        description="Manage the StaffHub QR attendance monitor, schedules and daily attendance records."
+        description="Manage company attendance monitors, schedules and daily attendance records."
       />
 
       {/* =====================================================
           SUMMARY
-          ===================================================== */}
+      ===================================================== */}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
         <StatCard
           title="Expected Today"
           value={
-            summary?.expected ?? 0
+            summary?.expected ??
+            0
           }
           icon={
             <Users className="h-5 w-5" />
@@ -349,7 +639,8 @@ export default function AttendanceManagementPage() {
         <StatCard
           title="Attended"
           value={
-            summary?.attended ?? 0
+            summary?.attended ??
+            0
           }
           icon={
             <Clock className="h-5 w-5" />
@@ -360,7 +651,8 @@ export default function AttendanceManagementPage() {
         <StatCard
           title="Currently Working"
           value={
-            summary?.currentlyWorking ?? 0
+            summary?.currentlyWorking ??
+            0
           }
           icon={
             <Activity className="h-5 w-5" />
@@ -371,7 +663,8 @@ export default function AttendanceManagementPage() {
         <StatCard
           title="On Leave"
           value={
-            summary?.onLeave ?? 0
+            summary?.onLeave ??
+            0
           }
           icon={
             <CalendarClock className="h-5 w-5" />
@@ -382,130 +675,340 @@ export default function AttendanceManagementPage() {
       </div>
 
       {/* =====================================================
-          MONITOR CONTROL
-          ===================================================== */}
+          QR MONITOR MANAGEMENT
+      ===================================================== */}
 
       <div className="bg-white border border-gray-200 rounded-2xl p-6">
 
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
 
-          <div>
+          <div className="flex items-center gap-3">
 
-            <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-indigo-100 flex items-center justify-center">
 
-              <div className="h-10 w-10 rounded-xl bg-indigo-100 flex items-center justify-center">
-                <QrCode className="h-5 w-5 text-indigo-600" />
-              </div>
+              <QrCode className="h-5 w-5 text-indigo-600" />
 
-              <div>
-                <h2 className="text-lg font-bold text-gray-900">
-                  Attendance QR Monitor
-                </h2>
+            </div>
 
-                <p className="text-sm text-gray-500">
-                  {monitor?.active
-                    ? 'The attendance monitor is currently live.'
-                    : 'The attendance monitor is waiting for activation.'}
-                </p>
-              </div>
+            <div>
+
+              <h2 className="text-lg font-bold text-gray-900">
+                QR Monitor Management
+              </h2>
+
+              <p className="text-sm text-gray-500">
+                Accept physical attendance monitors and manage their company access.
+              </p>
 
             </div>
 
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="text-sm text-gray-500">
 
-            <span
-              className={`px-3 py-1.5 rounded-full text-sm font-semibold ${
-                monitor?.active
-                  ? 'bg-green-100 text-green-700'
-                  : 'bg-gray-100 text-gray-600'
-              }`}
-            >
-              {monitor?.active
-                ? 'LIVE'
-                : 'INACTIVE'}
-            </span>
+            {monitors.length}{' '}
+            accepted monitor
+            {monitors.length === 1
+              ? ''
+              : 's'}
 
           </div>
 
         </div>
 
-        {!monitor?.active ? (
-          <div className="mt-6">
+        {/* AUTHORIZE */}
 
-            <p className="text-sm font-medium text-gray-700 mb-2">
-              Temporary Activation Code
-            </p>
+        <div className="mt-6 rounded-2xl border border-indigo-100 bg-indigo-50 p-5">
 
-            <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex items-start gap-3">
 
-              <input
-                value={activationCode}
-                onChange={(event) =>
-                  setActivationCode(
-                    event.target.value
-                      .replace(/\D/g, '')
-                      .slice(0, 6)
-                  )
-                }
-                maxLength={6}
-                placeholder="Enter 6-digit code"
-                className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 tracking-[0.25em] font-bold"
-              />
+            <ShieldCheck className="h-5 w-5 text-indigo-600 mt-0.5" />
 
-              <button
-                onClick={activate}
-                disabled={
-                  loading ||
-                  activationCode.length !== 6
-                }
-                className="px-5 py-3 bg-indigo-600 text-white rounded-xl font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                <Play className="h-4 w-4" />
-                Activate Monitor
-              </button>
+            <div className="flex-1">
+
+              <h3 className="font-semibold text-gray-900">
+                Accept New Monitor
+              </h3>
+
+              <p className="text-sm text-gray-600 mt-1">
+                Open the Attendance Monitor page on the physical monitor. Enter the six-digit code shown there.
+              </p>
 
             </div>
 
-            <p className="mt-3 text-xs text-gray-500">
-              Open the standalone Attendance Monitor page to see the current temporary activation code.
-            </p>
-
           </div>
-        ) : (
-          <div className="mt-6 flex flex-col sm:flex-row gap-3">
+
+          <div className="mt-4 flex flex-col sm:flex-row gap-3">
+
+            <input
+              value={activationCode}
+              onChange={(event) => {
+                setActivationCode(
+                  event.target.value
+                    .replace(
+                      /\D/g,
+                      ''
+                    )
+                    .slice(
+                      0,
+                      6
+                    )
+                );
+              }}
+              maxLength={6}
+              inputMode="numeric"
+              placeholder="Enter 6-digit code"
+              className="flex-1 px-4 py-3 bg-white border border-gray-300 rounded-xl tracking-[0.25em] font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
 
             <button
-              onClick={deactivate}
-              className="px-5 py-3 bg-red-600 text-white rounded-xl font-semibold flex items-center justify-center gap-2"
+              type="button"
+              onClick={authorize}
+              disabled={
+                monitorActionId ===
+                  -1 ||
+                activationCode.length !==
+                  6
+              }
+              className="px-5 py-3 bg-indigo-600 text-white rounded-xl font-semibold flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              <Square className="h-4 w-4" />
-              Deactivate Monitor
-            </button>
 
-            <button
-              onClick={rotate}
-              className="px-5 py-3 border border-gray-300 text-gray-700 rounded-xl font-semibold flex items-center justify-center gap-2"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Rotate QR
+              {monitorActionId ===
+              -1 ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <ShieldCheck className="h-4 w-4" />
+              )}
+
+              Accept Monitor
+
             </button>
 
           </div>
-        )}
+
+        </div>
+
+        {/* ACCEPTED MONITORS */}
+
+        <div className="mt-6">
+
+          <h3 className="text-base font-bold text-gray-900">
+            Accepted Monitors
+          </h3>
+
+          {monitors.length === 0 ? (
+
+            <div className="mt-4 rounded-xl border border-dashed border-gray-300 p-8 text-center">
+
+              <QrCode className="h-8 w-8 text-gray-400 mx-auto" />
+
+              <p className="mt-3 text-sm text-gray-500">
+                No attendance monitor has been accepted by this company.
+              </p>
+
+            </div>
+
+          ) : (
+
+            <div className="mt-4 grid grid-cols-1 xl:grid-cols-2 gap-4">
+
+              {monitors.map(
+                (monitor) => {
+
+                  const busy =
+                    monitorActionId ===
+                    monitor.id;
+
+                  return (
+                    <div
+                      key={
+                        monitor.id
+                      }
+                      className="border border-gray-200 rounded-2xl p-5"
+                    >
+
+                      <div className="flex items-start justify-between gap-4">
+
+                        <div className="flex items-center gap-3">
+
+                          <div className="h-10 w-10 rounded-xl bg-gray-100 flex items-center justify-center">
+
+                            <QrCode className="h-5 w-5 text-gray-600" />
+
+                          </div>
+
+                          <div>
+
+                            <h4 className="font-bold text-gray-900">
+                              Monitor #
+                              {monitor.id}
+                            </h4>
+
+                            <div className="flex items-center gap-1 text-sm text-gray-500">
+
+                              <Building2 className="h-3.5 w-3.5" />
+
+                              {monitor.companyName ||
+                                'Current company'}
+
+                            </div>
+
+                          </div>
+
+                        </div>
+
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-bold ${
+                            monitor.active
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {monitor.active
+                            ? 'LIVE'
+                            : 'INACTIVE'}
+                        </span>
+
+                      </div>
+
+                      <div className="mt-5 grid grid-cols-2 gap-3">
+
+                        <div className="rounded-xl bg-gray-50 p-3">
+
+                          <p className="text-xs text-gray-500">
+                            Authorized By
+                          </p>
+
+                          <p className="mt-1 text-sm font-semibold text-gray-900 truncate">
+                            {monitor.authorizedBy ||
+                              '--'}
+                          </p>
+
+                        </div>
+
+                        <div className="rounded-xl bg-gray-50 p-3">
+
+                          <p className="text-xs text-gray-500">
+                            QR Sequence
+                          </p>
+
+                          <p className="mt-1 text-sm font-semibold text-gray-900">
+                            #
+                            {monitor.qrSequence}
+                          </p>
+
+                        </div>
+
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+
+                        {!monitor.active ? (
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              activate(
+                                monitor.id
+                              )
+                            }
+                            disabled={busy}
+                            className="px-4 py-2.5 bg-green-600 text-white rounded-xl text-sm font-semibold flex items-center gap-2 disabled:opacity-50"
+                          >
+
+                            {busy ? (
+                              <RefreshCw className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Play className="h-4 w-4" />
+                            )}
+
+                            Activate
+
+                          </button>
+
+                        ) : (
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              deactivate(
+                                monitor.id
+                              )
+                            }
+                            disabled={busy}
+                            className="px-4 py-2.5 bg-red-600 text-white rounded-xl text-sm font-semibold flex items-center gap-2 disabled:opacity-50"
+                          >
+
+                            <Square className="h-4 w-4" />
+
+                            Deactivate
+
+                          </button>
+
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            rotate(
+                              monitor.id
+                            )
+                          }
+                          disabled={
+                            busy ||
+                            !monitor.active
+                          }
+                          className="px-4 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-semibold flex items-center gap-2 disabled:opacity-50"
+                        >
+
+                          <RefreshCw className="h-4 w-4" />
+
+                          Rotate QR
+
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            reject(
+                              monitor.id
+                            )
+                          }
+                          disabled={busy}
+                          className="px-4 py-2.5 border border-red-200 text-red-600 rounded-xl text-sm font-semibold flex items-center gap-2 hover:bg-red-50 disabled:opacity-50"
+                        >
+
+                          <XCircle className="h-4 w-4" />
+
+                          Reject
+
+                        </button>
+
+                      </div>
+
+                    </div>
+                  );
+                }
+              )}
+
+            </div>
+
+          )}
+
+        </div>
 
       </div>
 
       {/* =====================================================
           DATE
-          ===================================================== */}
+      ===================================================== */}
 
       <div className="bg-white border border-gray-200 rounded-2xl p-6">
 
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
 
           <div>
+
             <h2 className="text-lg font-bold text-gray-900">
               Daily Attendance
             </h2>
@@ -513,6 +1016,7 @@ export default function AttendanceManagementPage() {
             <p className="text-sm text-gray-500">
               View attendance records for a selected date.
             </p>
+
           </div>
 
           <input
@@ -531,8 +1035,8 @@ export default function AttendanceManagementPage() {
       </div>
 
       {/* =====================================================
-          ATTENDANCE TABLE
-          ===================================================== */}
+          RECORDS
+      ===================================================== */}
 
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
 
@@ -545,10 +1049,13 @@ export default function AttendanceManagementPage() {
         </div>
 
         {records.length === 0 ? (
+
           <div className="p-8 text-center text-gray-500">
             No attendance records for this date.
           </div>
+
         ) : (
+
           <div className="overflow-x-auto">
 
             <table className="w-full text-sm">
@@ -589,23 +1096,29 @@ export default function AttendanceManagementPage() {
 
                 {records.map(
                   (record) => (
+
                     <tr
                       key={record.id}
                       className="border-t border-gray-100"
                     >
 
                       <td className="px-6 py-4">
+
                         <div className="font-semibold text-gray-900">
-                          {record.employeeName}
+                          {record.employeeName ||
+                            '--'}
                         </div>
 
                         <div className="text-xs text-gray-500">
-                          {record.employeeNumber}
+                          {record.employeeNumber ||
+                            '--'}
                         </div>
+
                       </td>
 
                       <td className="px-6 py-4">
-                        {record.department || '--'}
+                        {record.department ||
+                          '--'}
                       </td>
 
                       <td className="px-6 py-4">
@@ -621,14 +1134,17 @@ export default function AttendanceManagementPage() {
                       </td>
 
                       <td className="px-6 py-4">
-                        {record.status}
+                        {record.status ||
+                          '--'}
                       </td>
 
                       <td className="px-6 py-4">
-                        {record.checkInMethod || '--'}
+                        {record.checkInMethod ||
+                          '--'}
                       </td>
 
                     </tr>
+
                   )
                 )}
 
@@ -637,23 +1153,27 @@ export default function AttendanceManagementPage() {
             </table>
 
           </div>
+
         )}
 
       </div>
 
       {/* =====================================================
-          SCHEDULES
-          ===================================================== */}
+          SCHEDULE
+      ===================================================== */}
 
       <div className="bg-white border border-gray-200 rounded-2xl p-6">
 
         <div className="flex items-center gap-3 mb-6">
 
           <div className="h-10 w-10 rounded-xl bg-indigo-100 flex items-center justify-center">
+
             <CalendarClock className="h-5 w-5 text-indigo-600" />
+
           </div>
 
           <div>
+
             <h2 className="text-lg font-bold text-gray-900">
               Automatic Monitor Schedule
             </h2>
@@ -661,6 +1181,7 @@ export default function AttendanceManagementPage() {
             <p className="text-sm text-gray-500">
               Automatically activate and deactivate the attendance monitor.
             </p>
+
           </div>
 
         </div>
@@ -690,6 +1211,7 @@ export default function AttendanceManagementPage() {
             }
             className="px-4 py-3 border border-gray-300 rounded-xl"
           >
+
             <option value="DAILY">
               Daily
             </option>
@@ -701,9 +1223,11 @@ export default function AttendanceManagementPage() {
             <option value="ONCE">
               Once
             </option>
+
           </select>
 
           {scheduleType === 'ONCE' ? (
+
             <input
               type="date"
               value={scheduleDate}
@@ -714,7 +1238,9 @@ export default function AttendanceManagementPage() {
               }
               className="px-4 py-3 border border-gray-300 rounded-xl"
             />
+
           ) : scheduleType === 'WEEKLY' ? (
+
             <select
               value={dayOfWeek}
               onChange={(event) =>
@@ -724,6 +1250,7 @@ export default function AttendanceManagementPage() {
               }
               className="px-4 py-3 border border-gray-300 rounded-xl"
             >
+
               {[
                 'MONDAY',
                 'TUESDAY',
@@ -732,17 +1259,23 @@ export default function AttendanceManagementPage() {
                 'FRIDAY',
                 'SATURDAY',
                 'SUNDAY',
-              ].map((day) => (
-                <option
-                  key={day}
-                  value={day}
-                >
-                  {day}
-                </option>
-              ))}
+              ].map(
+                (day) => (
+                  <option
+                    key={day}
+                    value={day}
+                  >
+                    {day}
+                  </option>
+                )
+              )}
+
             </select>
+
           ) : (
+
             <div />
+
           )}
 
           <input
@@ -768,18 +1301,26 @@ export default function AttendanceManagementPage() {
           />
 
           <button
-            onClick={createSchedule}
-            disabled={creatingSchedule}
+            type="button"
+            onClick={
+              createSchedule
+            }
+            disabled={
+              creatingSchedule
+            }
             className="px-5 py-3 bg-indigo-600 text-white rounded-xl font-semibold disabled:opacity-50"
           >
+
             {creatingSchedule
               ? 'Creating...'
               : 'Create Schedule'}
+
           </button>
 
         </div>
 
         {schedules.length > 0 && (
+
           <div className="mt-6 overflow-x-auto">
 
             <table className="w-full text-sm">
@@ -816,47 +1357,65 @@ export default function AttendanceManagementPage() {
 
                 {schedules.map(
                   (schedule) => (
+
                     <tr
-                      key={schedule.id}
+                      key={
+                        schedule.id
+                      }
                       className="border-t border-gray-100"
                     >
 
                       <td className="px-4 py-3">
-                        {schedule.scheduleName}
+                        {
+                          schedule.scheduleName
+                        }
                       </td>
 
                       <td className="px-4 py-3">
-                        {schedule.scheduleType}
+                        {
+                          schedule.scheduleType
+                        }
                       </td>
 
                       <td className="px-4 py-3">
-                        {schedule.startTime}
+                        {
+                          schedule.startTime
+                        }
                         {' - '}
-                        {schedule.endTime}
+                        {
+                          schedule.endTime
+                        }
                       </td>
 
                       <td className="px-4 py-3">
-                        {schedule.enabled
-                          ? 'Yes'
-                          : 'No'}
+                        {
+                          schedule.enabled
+                            ? 'Yes'
+                            : 'No'
+                        }
                       </td>
 
                       <td className="px-4 py-3 text-right">
 
                         <button
+                          type="button"
                           onClick={() =>
                             removeSchedule(
                               schedule.id
                             )
                           }
                           className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                          title="Delete schedule"
                         >
+
                           <Trash2 className="h-4 w-4" />
+
                         </button>
 
                       </td>
 
                     </tr>
+
                   )
                 )}
 
@@ -865,13 +1424,14 @@ export default function AttendanceManagementPage() {
             </table>
 
           </div>
+
         )}
 
       </div>
 
       {/* =====================================================
-          ACTIVITY LOG
-          ===================================================== */}
+          ACTIVITY
+      ===================================================== */}
 
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden">
 
@@ -882,33 +1442,44 @@ export default function AttendanceManagementPage() {
           </h2>
 
           <p className="text-sm text-gray-500 mt-1">
-            Monitor activation, QR rotation and attendance activity.
+            Monitor authorization, activation, QR rotation and attendance activity.
           </p>
 
         </div>
 
         {events.length === 0 ? (
+
           <div className="p-8 text-center text-gray-500">
             No activity recorded yet.
           </div>
+
         ) : (
+
           <div className="divide-y divide-gray-100">
 
             {events.map(
               (event) => (
+
                 <div
-                  key={event.id}
+                  key={
+                    event.id
+                  }
                   className="p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
                 >
 
                   <div>
 
                     <div className="font-semibold text-gray-900">
-                      {event.action}
+                      {
+                        event.action
+                      }
                     </div>
 
                     <div className="text-sm text-gray-500">
-                      {event.details || '--'}
+                      {
+                        event.details ||
+                        '--'
+                      }
                     </div>
 
                   </div>
@@ -916,26 +1487,32 @@ export default function AttendanceManagementPage() {
                   <div className="text-sm text-gray-500 text-left md:text-right">
 
                     <div>
-                      {event.employeeName ||
+                      {
+                        event.employeeName ||
                         event.performedBy ||
-                        '--'}
+                        '--'
+                      }
                     </div>
 
                     <div>
-                      {event.eventTime
-                        ? formatDateTime(
-                            event.eventTime
-                          )
-                        : '--'}
+                      {
+                        event.eventTime
+                          ? formatDateTime(
+                              event.eventTime
+                            )
+                          : '--'
+                      }
                     </div>
 
                   </div>
 
                 </div>
+
               )
             )}
 
           </div>
+
         )}
 
       </div>
@@ -943,6 +1520,10 @@ export default function AttendanceManagementPage() {
     </div>
   );
 }
+
+// ============================================================
+// DATE FORMATTER
+// ============================================================
 
 function formatDateTime(
   value: string | null
