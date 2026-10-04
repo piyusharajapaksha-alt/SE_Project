@@ -45,10 +45,6 @@ const queryString = (
 // EMPLOYEE
 // ============================================================
 
-// ============================================================
-// EMPLOYEE
-// ============================================================
-
 export const employeeService = {
   getAll: (
     filters?: Filters
@@ -126,12 +122,31 @@ export const employeeService = {
 // ============================================================
 
 export const attendanceService = {
+  /*
+   * IMPORTANT
+   *
+   * The backend does NOT expose:
+   *
+   * GET /api/attendance
+   *
+   * The correct endpoint for date-based attendance records is:
+   *
+   * GET /api/attendance/records?date=YYYY-MM-DD
+   *
+   * This method is kept because existing dashboard and
+   * management pages already use attendanceService.getAll().
+   */
+
   getAll: (
     filters?: Filters
   ) =>
     apiRequest<any[]>(
-      `/api/attendance${queryString(filters)}`
+      `/api/attendance/records${queryString(filters)}`
     ),
+
+  // ----------------------------------------------------------
+  // Company attendance records
+  // ----------------------------------------------------------
 
   getRecords: (
     date?: string
@@ -144,6 +159,10 @@ export const attendanceService = {
       }`
     ),
 
+  // ----------------------------------------------------------
+  // Employee attendance history
+  // ----------------------------------------------------------
+
   getByEmployee: (
     employeeId: string
   ) =>
@@ -152,6 +171,10 @@ export const attendanceService = {
         employeeId
       )}`
     ),
+
+  // ----------------------------------------------------------
+  // Employee today's attendance
+  // ----------------------------------------------------------
 
   getToday: (
     employeeId: string
@@ -162,17 +185,10 @@ export const attendanceService = {
       )}/today`
     ),
 
-  /*
-   * IMPORTANT:
-   *
-   * The backend has:
-   *
-   * /api/attendance/summary?date=YYYY-MM-DD
-   *
-   * It does NOT have:
-   *
-   * /api/attendance/employee/{employeeId}/summary
-   */
+  // ----------------------------------------------------------
+  // Company attendance summary
+  // ----------------------------------------------------------
+
   getSummary: (
     date?: string
   ) =>
@@ -519,7 +535,8 @@ export const grievanceService = {
 //
 // Kept for compatibility with existing frontend code.
 // The current backend does not expose a working notification
-// controller, so DashboardPage does not call these methods.
+// controller, so existing pages should not depend on these
+// methods for dashboard loading.
 //
 
 export const notificationService = {
@@ -560,18 +577,13 @@ export const notificationService = {
 // DASHBOARD
 // ============================================================
 //
-// IMPORTANT:
-//
-// Do NOT call:
+// The current backend does not expose:
 //
 // /api/dashboard/employee/{employeeId}
 //
-// There is no matching DashboardController in the current
-// backend.
+// Therefore the dashboard is assembled from the existing
+// module APIs.
 //
-// DashboardPage builds its dashboard from the existing module
-// APIs instead.
-// ============================================================
 
 export const dashboardService = {
   getEmployeeDashboard: async (

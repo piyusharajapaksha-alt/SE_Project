@@ -165,12 +165,7 @@ function getStoredMonitorId(): number | undefined {
     }
 
     return parsed;
-  } catch (error) {
-    console.warn(
-      'Unable to read attendance monitor ID from localStorage.',
-      error
-    );
-
+  } catch {
     return undefined;
   }
 }
@@ -179,33 +174,32 @@ function saveStoredMonitorId(
   monitorId: number
 ): void {
   try {
+
     if (
       Number.isInteger(monitorId) &&
       monitorId > 0
     ) {
+
       window.localStorage.setItem(
         ATTENDANCE_MONITOR_STORAGE_KEY,
         String(monitorId)
       );
     }
-  } catch (error) {
-    console.warn(
-      'Unable to save attendance monitor ID.',
-      error
-    );
+
+  } catch {
+    // Ignore localStorage failures.
   }
 }
 
 function clearStoredMonitorId(): void {
   try {
+
     window.localStorage.removeItem(
       ATTENDANCE_MONITOR_STORAGE_KEY
     );
-  } catch (error) {
-    console.warn(
-      'Unable to clear attendance monitor ID.',
-      error
-    );
+
+  } catch {
+    // Ignore localStorage failures.
   }
 }
 
@@ -213,19 +207,6 @@ function clearStoredMonitorId(): void {
 // QR MONITOR
 // ============================================================
 
-/**
- * Get the physical attendance monitor.
- *
- * The monitor ID is stored in localStorage so that:
- *
- * 1. Refreshing the page keeps the same monitor.
- * 2. The monitor does not create a new DB row every poll.
- * 3. The same activation code remains associated with the
- *    physical browser/device.
- *
- * If there is no stored monitor ID, the backend creates a
- * new monitor and this function stores its ID.
- */
 export async function getAttendanceMonitor(
   monitorId?: number
 ): Promise<AttendanceMonitor> {
@@ -242,7 +223,7 @@ export async function getAttendanceMonitor(
         )}`
       : '';
 
-  let result: AttendanceMonitor | undefined;
+  let result: AttendanceMonitor;
 
   try {
 
@@ -253,11 +234,6 @@ export async function getAttendanceMonitor(
 
   } catch (error) {
 
-    /*
-     * If the stored monitor ID became invalid,
-     * clear it so the next request can create a
-     * fresh physical monitor.
-     */
     if (storedMonitorId !== undefined) {
       clearStoredMonitorId();
     }
@@ -280,12 +256,6 @@ export async function getAttendanceMonitor(
     );
   }
 
-  /*
-   * Always save the ID returned by the backend.
-   *
-   * This is important because the backend can create
-   * a replacement monitor when the old ID no longer exists.
-   */
   saveStoredMonitorId(
     result.id
   );
@@ -293,32 +263,19 @@ export async function getAttendanceMonitor(
   return result;
 }
 
-/**
- * Forget the physical monitor stored in this browser.
- *
- * Normally this should not be called by the monitor page.
- * It is provided for troubleshooting/resetting a device.
- */
 export function clearAttendanceMonitorStorage(): void {
   clearStoredMonitorId();
 }
 
-/**
- * Get all monitors accepted by the
- * currently authenticated company.
- */
 export async function getAcceptedAttendanceMonitors(): Promise<
   AttendanceMonitor[]
 > {
+
   return apiRequest<AttendanceMonitor[]>(
     '/api/attendance/monitor/accepted'
   );
 }
 
-/**
- * Accept a new physical monitor using
- * its temporary six-digit activation code.
- */
 export async function authorizeAttendanceMonitor(
   code: string
 ): Promise<AttendanceMonitor> {
@@ -334,9 +291,6 @@ export async function authorizeAttendanceMonitor(
   );
 }
 
-/**
- * Activate an already-authorized monitor.
- */
 export async function activateAttendanceMonitor(
   monitorId: number
 ): Promise<AttendanceMonitor> {
@@ -352,9 +306,6 @@ export async function activateAttendanceMonitor(
   );
 }
 
-/**
- * Deactivate an already-authorized monitor.
- */
 export async function deactivateAttendanceMonitor(
   monitorId: number
 ): Promise<void> {
@@ -370,10 +321,6 @@ export async function deactivateAttendanceMonitor(
   );
 }
 
-/**
- * Permanently reject/unlink a monitor
- * from the current company.
- */
 export async function rejectAttendanceMonitor(
   monitorId: number
 ): Promise<void> {
@@ -389,10 +336,6 @@ export async function rejectAttendanceMonitor(
   );
 }
 
-/**
- * Rotate QR for an already-authorized
- * active monitor.
- */
 export async function rotateAttendanceQr(
   monitorId: number
 ): Promise<AttendanceMonitor> {
@@ -490,14 +433,14 @@ export async function getAttendanceSummary(
 }
 
 export async function getAttendanceEvents(
-  limit = 50
+  limit = 100
 ): Promise<AttendanceEvent[]> {
 
   const safeLimit =
     Math.max(
       1,
       Math.min(
-        Number(limit) || 50,
+        Number(limit) || 100,
         200
       )
     );
@@ -526,6 +469,52 @@ export async function correctAttendance(
     {
       method: 'PUT',
       body: data,
+    }
+  );
+}
+
+// ============================================================
+// BRAND-NEW MANUAL ATTENDANCE
+// ============================================================
+
+export interface ManualAttendancePayload {
+  employeeNumber: string;
+  date: string;
+  checkIn: string | null;
+  checkOut: string | null;
+  status: string;
+  reason: string;
+}
+
+export async function createManualAttendance(
+  data: ManualAttendancePayload
+): Promise<AttendanceRecord> {
+
+  return apiRequest<AttendanceRecord>(
+    '/api/attendance/management/manual',
+    {
+      method: 'POST',
+      body: data,
+    }
+  );
+}
+
+// ============================================================
+// REAL DATABASE DELETE
+// ============================================================
+
+export async function deleteAttendanceRecord(
+  id: number,
+  verification: string
+): Promise<void> {
+
+  await apiRequest(
+    `/api/attendance/management/records/${id}`,
+    {
+      method: 'DELETE',
+      body: {
+        verification,
+      },
     }
   );
 }
@@ -588,9 +577,16 @@ export async function deleteAttendanceSchedule(
   );
 }
 
+
+
+
 // ============================================================
 // QR SETTINGS
 // ============================================================
 
 export const QR_ROTATION_SECONDS = 10;
+
+
+
+
 
