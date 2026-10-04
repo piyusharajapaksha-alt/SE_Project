@@ -106,18 +106,55 @@ export const attendanceService = {
       `/api/attendance${queryString(filters)}`
     ),
 
+  getRecords: (
+    date?: string
+  ) =>
+    apiRequest<any[]>(
+      `/api/attendance/records${
+        date
+          ? `?date=${encodeURIComponent(date)}`
+          : ''
+      }`
+    ),
+
   getByEmployee: (
     employeeId: string
   ) =>
     apiRequest<any[]>(
-      `/api/attendance/employee/${employeeId}`
+      `/api/attendance/employee/${encodeURIComponent(
+        employeeId
+      )}`
     ),
 
-  getSummary: (
+  getToday: (
     employeeId: string
   ) =>
     apiRequest<any>(
-      `/api/attendance/employee/${employeeId}/summary`
+      `/api/attendance/employee/${encodeURIComponent(
+        employeeId
+      )}/today`
+    ),
+
+  /*
+   * IMPORTANT:
+   *
+   * The backend has:
+   *
+   * /api/attendance/summary?date=YYYY-MM-DD
+   *
+   * It does NOT have:
+   *
+   * /api/attendance/employee/{employeeId}/summary
+   */
+  getSummary: (
+    date?: string
+  ) =>
+    apiRequest<any>(
+      `/api/attendance/summary${
+        date
+          ? `?date=${encodeURIComponent(date)}`
+          : ''
+      }`
     ),
 };
 
@@ -137,7 +174,9 @@ export const leaveService = {
     employeeId: string
   ) =>
     apiRequest<any>(
-      `/api/leave/balance/${employeeId}`
+      `/api/leave/balance/${encodeURIComponent(
+        employeeId
+      )}`
     ),
 
   create: (
@@ -217,13 +256,96 @@ export const performanceService = {
     employeeId: string
   ) =>
     apiRequest<any[]>(
-      `/api/performance/employee/${employeeId}`
+      `/api/performance/employee/${encodeURIComponent(
+        employeeId
+      )}`
     ),
 };
 
 // ============================================================
-// EVENTS
+// TRAINING
 // ============================================================
+
+export const trainingService = {
+  getAll: () =>
+    apiRequest<any[]>(
+      '/api/training'
+    ),
+
+  getById: (
+    id: string | number
+  ) =>
+    apiRequest<any>(
+      `/api/training/${id}`
+    ),
+
+  getEmployees: (
+    id: string | number
+  ) =>
+    apiRequest<any[]>(
+      `/api/training/${id}/employees`
+    ),
+
+  create: (
+    data: any
+  ) =>
+    apiRequest<any>(
+      '/api/training',
+      {
+        method: 'POST',
+        body: data,
+      }
+    ),
+
+  update: (
+    id: string | number,
+    data: any
+  ) =>
+    apiRequest<any>(
+      `/api/training/${id}`,
+      {
+        method: 'PUT',
+        body: data,
+      }
+    ),
+
+  delete: (
+    id: string | number
+  ) =>
+    apiRequest<void>(
+      `/api/training/${id}`,
+      {
+        method: 'DELETE',
+      }
+    ),
+
+  register: (
+    id: string | number,
+    employeeId: string
+  ) =>
+    apiRequest<void>(
+      `/api/training/${id}/register`,
+      {
+        method: 'POST',
+        body: {
+          employeeId,
+        },
+      }
+    ),
+
+  unregister: (
+    id: string | number,
+    employeeId: string
+  ) =>
+    apiRequest<void>(
+      `/api/training/${id}/register/${encodeURIComponent(
+        employeeId
+      )}`,
+      {
+        method: 'DELETE',
+      }
+    ),
+};
 
 // ============================================================
 // EVENTS
@@ -299,7 +421,9 @@ export const eventService = {
     employeeId: string
   ) =>
     apiRequest<void>(
-      `/api/events/${id}/register/${employeeId}`,
+      `/api/events/${id}/register/${encodeURIComponent(
+        employeeId
+      )}`,
       {
         method: 'DELETE',
       }
@@ -340,14 +464,15 @@ export const grievanceService = {
         method: 'POST',
         body: {
           employeeId,
-          response,
+          text: response,
         },
       }
     ),
 
   updateStatus: (
     id: string | number,
-    status: string
+    status: string,
+    updatedBy = ''
   ) =>
     apiRequest<any>(
       `/api/grievances/${id}/status`,
@@ -355,6 +480,7 @@ export const grievanceService = {
         method: 'PUT',
         body: {
           status,
+          updatedBy,
         },
       }
     ),
@@ -363,6 +489,11 @@ export const grievanceService = {
 // ============================================================
 // NOTIFICATIONS
 // ============================================================
+//
+// Kept for compatibility with existing frontend code.
+// The current backend does not expose a working notification
+// controller, so DashboardPage does not call these methods.
+//
 
 export const notificationService = {
   getAll: (
@@ -370,7 +501,9 @@ export const notificationService = {
     filters?: Filters
   ) =>
     apiRequest<any[]>(
-      `/api/notifications/${employeeId}${queryString(filters)}`
+      `/api/notifications/${encodeURIComponent(
+        employeeId
+      )}${queryString(filters)}`
     ),
 
   markRead: (
@@ -387,7 +520,9 @@ export const notificationService = {
     employeeId: string
   ) =>
     apiRequest<any>(
-      `/api/notifications/${employeeId}/read-all`,
+      `/api/notifications/${encodeURIComponent(
+        employeeId
+      )}/read-all`,
       {
         method: 'PUT',
       }
@@ -397,12 +532,68 @@ export const notificationService = {
 // ============================================================
 // DASHBOARD
 // ============================================================
+//
+// IMPORTANT:
+//
+// Do NOT call:
+//
+// /api/dashboard/employee/{employeeId}
+//
+// There is no matching DashboardController in the current
+// backend.
+//
+// DashboardPage builds its dashboard from the existing module
+// APIs instead.
+// ============================================================
 
 export const dashboardService = {
-  getEmployeeDashboard: (
+  getEmployeeDashboard: async (
     employeeId: string
-  ) =>
-    apiRequest<any>(
-      `/api/dashboard/employee/${employeeId}`
-    ),
+  ) => {
+    const [
+      attendance,
+      leaves,
+      balance,
+      performance,
+      training,
+      events,
+      grievances,
+    ] = await Promise.all([
+      attendanceService.getByEmployee(
+        employeeId
+      ),
+
+      leaveService.getAll({
+        employeeId,
+      }),
+
+      leaveService.getBalance(
+        employeeId
+      ),
+
+      performanceService.getByEmployee(
+        employeeId
+      ),
+
+      trainingService.getAll(),
+
+      eventService.getAll({
+        employeeId,
+      }),
+
+      grievanceService.getAll({
+        employeeId,
+      }),
+    ]);
+
+    return {
+      attendance,
+      leaves,
+      balance,
+      performance,
+      training,
+      events,
+      grievances,
+    };
+  },
 };
