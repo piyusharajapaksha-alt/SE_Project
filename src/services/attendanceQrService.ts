@@ -34,31 +34,25 @@ export interface AttendanceMonitor {
 
 export interface AttendanceRecord {
   id: number;
-
   employeeId: number;
 
   employeeNumber: string;
-
   employeeName: string;
-
   department: string | null;
 
   attendanceDate: string;
 
   checkIn: string | null;
-
   checkOut: string | null;
 
   status: string;
 
   checkInMethod: string | null;
-
   checkOutMethod: string | null;
 
   qrSessionId: number | null;
 
   manualCorrection: boolean;
-
   correctionReason: string | null;
 }
 
@@ -66,9 +60,7 @@ export interface AttendanceEvent {
   id: number;
 
   monitorId: number | null;
-
   attendanceRecordId: number | null;
-
   employeeId: number | null;
 
   action: string;
@@ -82,7 +74,6 @@ export interface AttendanceEvent {
   details: string | null;
 
   employeeNumber: string | null;
-
   employeeName: string | null;
 }
 
@@ -90,9 +81,7 @@ export interface AttendanceSummary {
   date: string;
 
   expected: number;
-
   attended: number;
-
   notAttended: number;
 
   onLeave: number;
@@ -100,7 +89,6 @@ export interface AttendanceSummary {
   late: number;
 
   checkedOut: number;
-
   currentlyWorking: number;
 }
 
@@ -120,16 +108,31 @@ export interface AttendanceSchedule {
   dayOfWeek: string | null;
 
   startTime: string;
-
   endTime: string;
 
   enabled: boolean;
 
   createdBy: string | null;
-
   createdAt: string | null;
-
   updatedAt: string | null;
+}
+
+// ============================================================
+// MANUAL ATTENDANCE
+// ============================================================
+
+export interface ManualAttendancePayload {
+  employeeNumber: string;
+
+  date: string;
+
+  checkIn: string | null;
+
+  checkOut: string | null;
+
+  status: string;
+
+  reason: string;
 }
 
 // ============================================================
@@ -141,21 +144,20 @@ const ATTENDANCE_MONITOR_STORAGE_KEY =
 
 function getStoredMonitorId(): number | undefined {
   try {
-    const stored =
+    const value =
       window.localStorage.getItem(
         ATTENDANCE_MONITOR_STORAGE_KEY
       );
 
-    if (!stored) {
+    if (!value) {
       return undefined;
     }
 
-    const parsed =
-      Number(stored);
+    const id = Number(value);
 
     if (
-      !Number.isInteger(parsed) ||
-      parsed <= 0
+      !Number.isInteger(id) ||
+      id <= 0
     ) {
       window.localStorage.removeItem(
         ATTENDANCE_MONITOR_STORAGE_KEY
@@ -164,7 +166,7 @@ function getStoredMonitorId(): number | undefined {
       return undefined;
     }
 
-    return parsed;
+    return id;
   } catch {
     return undefined;
   }
@@ -174,43 +176,41 @@ function saveStoredMonitorId(
   monitorId: number
 ): void {
   try {
-
     if (
       Number.isInteger(monitorId) &&
       monitorId > 0
     ) {
-
       window.localStorage.setItem(
         ATTENDANCE_MONITOR_STORAGE_KEY,
         String(monitorId)
       );
     }
-
   } catch {
-    // Ignore localStorage failures.
+    // Ignore localStorage errors.
   }
 }
 
 function clearStoredMonitorId(): void {
   try {
-
     window.localStorage.removeItem(
       ATTENDANCE_MONITOR_STORAGE_KEY
     );
-
   } catch {
-    // Ignore localStorage failures.
+    // Ignore localStorage errors.
   }
 }
 
+export function clearAttendanceMonitorStorage(): void {
+  clearStoredMonitorId();
+}
+
 // ============================================================
-// QR MONITOR
+// ATTENDANCE MONITOR
 // ============================================================
 
 export async function getAttendanceMonitor(
   monitorId?: number
 ): Promise<AttendanceMonitor> {
-
   const storedMonitorId =
     monitorId !== undefined
       ? monitorId
@@ -223,54 +223,42 @@ export async function getAttendanceMonitor(
         )}`
       : '';
 
-  let result: AttendanceMonitor;
-
   try {
-
-    result =
+    const result =
       await apiRequest<AttendanceMonitor>(
         `/api/attendance/monitor${query}`
       );
 
-  } catch (error) {
+    if (!result) {
+      throw new Error(
+        'Attendance monitor API returned an empty response.'
+      );
+    }
 
+    if (
+      !Number.isInteger(result.id) ||
+      result.id <= 0
+    ) {
+      throw new Error(
+        'Attendance monitor API returned an invalid monitor ID.'
+      );
+    }
+
+    saveStoredMonitorId(result.id);
+
+    return result;
+  } catch (error) {
     if (storedMonitorId !== undefined) {
       clearStoredMonitorId();
     }
 
     throw error;
   }
-
-  if (!result) {
-    throw new Error(
-      'Attendance monitor API returned an empty response.'
-    );
-  }
-
-  if (
-    !Number.isInteger(result.id) ||
-    result.id <= 0
-  ) {
-    throw new Error(
-      'Attendance monitor API returned an invalid monitor ID.'
-    );
-  }
-
-  saveStoredMonitorId(
-    result.id
-  );
-
-  return result;
-}
-
-export function clearAttendanceMonitorStorage(): void {
-  clearStoredMonitorId();
 }
 
 export async function getAcceptedAttendanceMonitors(): Promise<
   AttendanceMonitor[]
 > {
-
   return apiRequest<AttendanceMonitor[]>(
     '/api/attendance/monitor/accepted'
   );
@@ -279,13 +267,20 @@ export async function getAcceptedAttendanceMonitors(): Promise<
 export async function authorizeAttendanceMonitor(
   code: string
 ): Promise<AttendanceMonitor> {
+  const cleanCode = code.trim();
+
+  if (!cleanCode) {
+    throw new Error(
+      'Activation code is required.'
+    );
+  }
 
   return apiRequest<AttendanceMonitor>(
     '/api/attendance/monitor/authorize',
     {
       method: 'POST',
       body: {
-        code,
+        code: cleanCode,
       },
     }
   );
@@ -294,7 +289,6 @@ export async function authorizeAttendanceMonitor(
 export async function activateAttendanceMonitor(
   monitorId: number
 ): Promise<AttendanceMonitor> {
-
   return apiRequest<AttendanceMonitor>(
     '/api/attendance/monitor/activate',
     {
@@ -309,8 +303,7 @@ export async function activateAttendanceMonitor(
 export async function deactivateAttendanceMonitor(
   monitorId: number
 ): Promise<void> {
-
-  await apiRequest(
+  await apiRequest<void>(
     '/api/attendance/monitor/deactivate',
     {
       method: 'POST',
@@ -324,8 +317,7 @@ export async function deactivateAttendanceMonitor(
 export async function rejectAttendanceMonitor(
   monitorId: number
 ): Promise<void> {
-
-  await apiRequest(
+  await apiRequest<void>(
     '/api/attendance/monitor/reject',
     {
       method: 'POST',
@@ -339,7 +331,6 @@ export async function rejectAttendanceMonitor(
 export async function rotateAttendanceQr(
   monitorId: number
 ): Promise<AttendanceMonitor> {
-
   return apiRequest<AttendanceMonitor>(
     '/api/attendance/monitor/rotate',
     {
@@ -360,7 +351,6 @@ export async function scanAttendanceQr(
   monitorId: number,
   token: string
 ): Promise<AttendanceRecord> {
-
   return apiRequest<AttendanceRecord>(
     '/api/attendance/scan',
     {
@@ -381,7 +371,6 @@ export async function scanAttendanceQr(
 export async function getEmployeeTodayAttendance(
   employeeId: string | number
 ): Promise<AttendanceRecord | null> {
-
   return apiRequest<AttendanceRecord | null>(
     `/api/attendance/employee/${encodeURIComponent(
       String(employeeId)
@@ -392,7 +381,6 @@ export async function getEmployeeTodayAttendance(
 export async function getEmployeeAttendanceHistory(
   employeeId: string | number
 ): Promise<AttendanceRecord[]> {
-
   return apiRequest<AttendanceRecord[]>(
     `/api/attendance/employee/${encodeURIComponent(
       String(employeeId)
@@ -407,10 +395,11 @@ export async function getEmployeeAttendanceHistory(
 export async function getAttendanceRecords(
   date?: string
 ): Promise<AttendanceRecord[]> {
-
   const query =
-    date
-      ? `?date=${encodeURIComponent(date)}`
+    date && date.trim()
+      ? `?date=${encodeURIComponent(
+          date.trim()
+        )}`
       : '';
 
   return apiRequest<AttendanceRecord[]>(
@@ -421,10 +410,11 @@ export async function getAttendanceRecords(
 export async function getAttendanceSummary(
   date?: string
 ): Promise<AttendanceSummary> {
-
   const query =
-    date
-      ? `?date=${encodeURIComponent(date)}`
+    date && date.trim()
+      ? `?date=${encodeURIComponent(
+          date.trim()
+        )}`
       : '';
 
   return apiRequest<AttendanceSummary>(
@@ -435,15 +425,15 @@ export async function getAttendanceSummary(
 export async function getAttendanceEvents(
   limit = 100
 ): Promise<AttendanceEvent[]> {
-
-  const safeLimit =
-    Math.max(
-      1,
-      Math.min(
-        Number(limit) || 100,
-        200
-      )
-    );
+  const safeLimit = Math.max(
+    1,
+    Math.min(
+      Number.isFinite(limit)
+        ? Math.floor(limit)
+        : 100,
+      200
+    )
+  );
 
   return apiRequest<AttendanceEvent[]>(
     `/api/attendance/events?limit=${safeLimit}`
@@ -451,50 +441,100 @@ export async function getAttendanceEvents(
 }
 
 // ============================================================
-// ATTENDANCE CORRECTION
+// CORRECT EXISTING ATTENDANCE
 // ============================================================
 
-export async function correctAttendance(
-  id: number,
-  data: {
-    checkIn: string | null;
-    checkOut: string | null;
-    status: string;
-    reason: string;
-  }
-): Promise<void> {
-
-  await apiRequest(
-    `/api/attendance/records/${id}`,
-    {
-      method: 'PUT',
-      body: data,
-    }
-  );
-}
-
-// ============================================================
-// BRAND-NEW MANUAL ATTENDANCE
-// ============================================================
-
-export interface ManualAttendancePayload {
-  employeeNumber: string;
-  date: string;
+export interface AttendanceCorrectionPayload {
   checkIn: string | null;
   checkOut: string | null;
   status: string;
   reason: string;
 }
 
+export async function correctAttendance(
+  id: number,
+  data: AttendanceCorrectionPayload
+): Promise<void> {
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error(
+      'Invalid attendance record ID.'
+    );
+  }
+
+  if (!data.reason.trim()) {
+    throw new Error(
+      'A reason is required for attendance correction.'
+    );
+  }
+
+  await apiRequest<void>(
+    `/api/attendance/records/${id}`,
+    {
+      method: 'PUT',
+      body: {
+        checkIn: data.checkIn,
+        checkOut: data.checkOut,
+        status: data.status,
+        reason: data.reason.trim(),
+      },
+    }
+  );
+}
+
+// ============================================================
+// CREATE BRAND-NEW MANUAL ATTENDANCE
+// ============================================================
+
 export async function createManualAttendance(
   data: ManualAttendancePayload
 ): Promise<AttendanceRecord> {
+  if (!data.employeeNumber.trim()) {
+    throw new Error(
+      'Employee number is required.'
+    );
+  }
+
+  if (!data.date.trim()) {
+    throw new Error(
+      'Attendance date is required.'
+    );
+  }
+
+  if (!data.status.trim()) {
+    throw new Error(
+      'Attendance status is required.'
+    );
+  }
+
+  if (!data.reason.trim()) {
+    throw new Error(
+      'A reason is required for manual attendance.'
+    );
+  }
 
   return apiRequest<AttendanceRecord>(
     '/api/attendance/management/manual',
     {
       method: 'POST',
-      body: data,
+      body: {
+        employeeNumber:
+          data.employeeNumber.trim(),
+
+        date:
+          data.date.trim(),
+
+        checkIn:
+          data.checkIn || null,
+
+        checkOut:
+          data.checkOut || null,
+
+        status:
+          data.status.trim(),
+
+        reason:
+          data.reason.trim(),
+      },
     }
   );
 }
@@ -507,13 +547,28 @@ export async function deleteAttendanceRecord(
   id: number,
   verification: string
 ): Promise<void> {
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error(
+      'Invalid attendance record ID.'
+    );
+  }
 
-  await apiRequest(
+  if (
+    verification.trim().toUpperCase() !==
+    'DELETE'
+  ) {
+    throw new Error(
+      'Deletion verification failed.'
+    );
+  }
+
+  await apiRequest<void>(
     `/api/attendance/management/records/${id}`,
     {
       method: 'DELETE',
       body: {
-        verification,
+        verification:
+          verification.trim().toUpperCase(),
       },
     }
   );
@@ -526,7 +581,6 @@ export async function deleteAttendanceRecord(
 export async function getAttendanceSchedules(): Promise<
   AttendanceSchedule[]
 > {
-
   return apiRequest<AttendanceSchedule[]>(
     '/api/attendance/schedules'
   );
@@ -538,7 +592,6 @@ export async function createAttendanceSchedule(
     'id' | 'createdAt' | 'updatedAt'
   >
 ): Promise<AttendanceSchedule> {
-
   return apiRequest<AttendanceSchedule>(
     '/api/attendance/schedules',
     {
@@ -555,7 +608,6 @@ export async function updateAttendanceSchedule(
     'id' | 'createdAt' | 'updatedAt'
   >
 ): Promise<AttendanceSchedule> {
-
   return apiRequest<AttendanceSchedule>(
     `/api/attendance/schedules/${id}`,
     {
@@ -568,8 +620,7 @@ export async function updateAttendanceSchedule(
 export async function deleteAttendanceSchedule(
   id: number
 ): Promise<void> {
-
-  await apiRequest(
+  await apiRequest<void>(
     `/api/attendance/schedules/${id}`,
     {
       method: 'DELETE',
@@ -577,16 +628,9 @@ export async function deleteAttendanceSchedule(
   );
 }
 
-
-
-
 // ============================================================
 // QR SETTINGS
 // ============================================================
 
 export const QR_ROTATION_SECONDS = 10;
-
-
-
-
 
