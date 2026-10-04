@@ -8,24 +8,760 @@ import { DEPARTMENTS, EMPLOYEE_STATUSES } from '@/config';
 import { Plus, Eye, Pencil, Trash2, Users, Mail, Phone, MapPin, Briefcase, CalendarDays, ChevronLeft, Loader2 } from 'lucide-react';
 
 // --- Employee List Page ---
-export function EmployeeFormPage() {
-
-  const { id } = useParams();
-
+export function EmployeeListPage() {
+  const { checkPermission } = useAuth();
+  const { addToast } = useToast();
   const navigate = useNavigate();
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [deptFilter, setDeptFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('All');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const perPage = 10;
 
+  useEffect(() => { loadEmployees(); }, [search, deptFilter, statusFilter]);
+
+  const loadEmployees = async () => {
+    setLoading(true);
+    try {
+      const data = await employeeService.getAll({ search, department: deptFilter, status: statusFilter });
+      setEmployees(data);
+    } catch { } finally { setLoading(false); }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteId) {
+      return;
+    }
+
+    setDeleting(true);
+
+    try {
+      await employeeService.delete(deleteId);
+
+      addToast(
+        'success',
+        'Employee deleted',
+        'Employee has been deleted successfully.',
+      );
+
+      setDeleteId(null);
+
+      await loadEmployees();
+
+    } catch (error) {
+
+      addToast(
+        'error',
+        'Delete failed',
+        'Unable to delete the employee.',
+      );
+
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const paged = employees.slice((currentPage - 1) * perPage, currentPage * perPage);
+  const totalPages = Math.ceil(employees.length / perPage);
+
+  const statusBadge = (s: string) => s === 'Active' ? 'success' : s === 'On Leave' ? 'warning' : s === 'Probation' ? 'info' : 'danger';
+
+  return (
+    <div>
+      <PageHeader title="Employees" description="Manage employee records and profiles"
+        action={checkPermission('employees.create') ? <button onClick={() => navigate('/management/employees/create')} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 flex items-center gap-2"><Plus className="h-4 w-4" />Add Employee</button> : undefined} />
+
+      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+        <div className="flex-1"><SearchInput value={search} onChange={(v) => { setSearch(v); setCurrentPage(1); }} placeholder="Search by name, email, ID..." /></div>
+        <SelectFilter value={deptFilter} onChange={(v) => { setDeptFilter(v); setCurrentPage(1); }} options={DEPARTMENTS} placeholder="All Departments" />
+        <SelectFilter value={statusFilter} onChange={(v) => { setStatusFilter(v); setCurrentPage(1); }} options={EMPLOYEE_STATUSES} />
+      </div>
+
+      {loading ? <LoadingState /> : employees.length === 0 ? <EmptyState icon={<Users className="h-6 w-6" />} title="No employees found" description="Try adjusting your search or filters" /> : (
+        <>
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left py-3 px-4 font-medium text-gray-600">Employee</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-600 hidden sm:table-cell">Department</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-600 hidden md:table-cell">Position</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-600 hidden lg:table-cell">Role</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-600">Status</th>
+                    <th className="text-right py-3 px-4 font-medium text-gray-600">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paged.map((emp: any) => (
+                    <tr key={emp.id} className="border-t border-gray-100 hover:bg-gray-50">
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                            {emp.firstName[0]}{emp.lastName[0]}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium text-gray-900 truncate">{emp.firstName} {emp.lastName}</p>
+                            <p className="text-xs text-gray-500 truncate">{emp.email}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-gray-600 hidden sm:table-cell">{emp.department}</td>
+                      <td className="py-3 px-4 text-gray-600 hidden md:table-cell">{emp.position}</td>
+                      <td className="py-3 px-4 text-gray-600 hidden lg:table-cell">{emp.role}</td>
+                      <td className="py-3 px-4"><Badge variant={statusBadge(emp.employmentStatus) as any} dot> {emp.employmentStatus} </Badge></td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center justify-end gap-1">
+                          <button onClick={() => navigate(`/management/employees/${emp.id}`)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg" title="View"><Eye className="h-4 w-4" /></button>
+                          {checkPermission('employees.edit') && <button onClick={() => navigate(`/management/employees/${emp.id}/edit`)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg" title="Edit"><Pencil className="h-4 w-4" /></button>}
+                          {checkPermission('employees.delete') && <button onClick={() => setDeleteId(emp.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="h-4 w-4" /></button>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+        </>
+      )}
+
+      <ConfirmDialog isOpen={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={handleDelete} title="Delete Employee" message="Are you sure you want to delete this employee? This action cannot be undone." confirmLabel="Delete" variant="danger" isLoading={deleting} />
+    </div>
+  );
+}
+
+export function EmployeeDetailPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [employee, setEmployee] = useState<any>(null);
+  const [attendance, setAttendance] = useState<any[]>([]);
+  const [leaves, setLeaves] = useState<any[]>([]);
+  const [performance, setPerformance] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (id) loadData(id);
+  }, [id]);
+
+  const loadData = async (empId: string) => {
+    setLoading(true);
+
+
+    try {
+      const emp = await employeeService.getById(empId);
+      setEmployee(emp);
+
+      const att = await attendanceService.getByEmployee(empId);
+      setAttendance(att);
+
+      const lv = await leaveService.getAll({ employeeId: empId });
+      setLeaves(lv);
+
+      const perf = await performanceService.getByEmployee(empId);
+      setPerformance(perf);
+    } catch (error) {
+      console.error('Failed to load employee details:', error);
+    } finally {
+      setLoading(false);
+    }
+
+
+  };
+
+  if (loading) return <LoadingState />;
+
+  if (!employee) {
+    return <EmptyState title="Employee not found" />;
+  }
+
+  const initials = `${employee.firstName?.[0] || ''}${employee.lastName?.[0] || ''}`;
+
+  const formatSalary = (salary: any) => {
+    if (salary === null || salary === undefined || salary === '') {
+      return 'Not provided';
+    }
+
+
+    return `LKR ${Number(salary).toLocaleString('en-LK', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+
+
+  };
+
+  const formatValue = (value: any) => {
+    if (value === null || value === undefined || value === '') {
+      return 'Not provided';
+    }
+
+
+    return String(value);
+
+
+  };
+
+  const formatDate = (date: any) => {
+    if (!date) return 'Not provided';
+
+
+    const parsedDate = new Date(date);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return String(date);
+    }
+
+    return parsedDate.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+
+
+  };
+
+  const statusVariant =
+    employee.employmentStatus === 'Active'
+      ? 'success'
+      : employee.employmentStatus === 'On Leave'
+        ? 'warning'
+        : employee.employmentStatus === 'Probation'
+          ? 'info'
+          : 'danger';
+
+  return (<div>
+    {/* Back Button */}
+    <button
+      onClick={() => navigate('/management/employees')}
+      className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4"
+    > <ChevronLeft className="h-4 w-4" />
+      Back to Employees </button>
+
+    {/* Employee Profile Header */}
+    <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+      <div className="flex flex-col lg:flex-row lg:items-center gap-5">
+        {/* Avatar */}
+        <div className="w-20 h-20 bg-indigo-100 text-indigo-700 rounded-2xl flex items-center justify-center text-2xl font-bold flex-shrink-0">
+          {initials}
+        </div>
+
+        {/* Main Employee Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <h1 className="text-2xl font-bold text-gray-900">
+              {employee.firstName} {employee.lastName}
+            </h1>
+
+            <Badge variant={statusVariant as any} dot>
+              {formatValue(employee.employmentStatus)}
+            </Badge>
+          </div>
+
+          <p className="text-sm text-gray-500 mt-1">
+            {formatValue(employee.position)}
+            {' • '}
+            {formatValue(employee.department)}
+          </p>
+
+          <div className="flex flex-wrap gap-2 mt-3">
+            <Badge variant="info">
+              {formatValue(employee.role)}
+            </Badge>
+
+            <Badge variant="neutral">
+              {formatValue(employee.employeeNumber)}
+            </Badge>
+          </div>
+        </div>
+
+        {/* Edit Button */}
+        <div className="flex-shrink-0">
+          <button
+            onClick={() =>
+              navigate(`/management/employees/${employee.id}/edit`)
+            }
+            className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 flex items-center gap-2"
+          >
+            <Pencil className="h-4 w-4" />
+            Edit
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {/* Employee Information */}
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      {/* Personal Information */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          Personal Information
+        </h3>
+
+        <div className="space-y-4">
+          {/* Gender */}
+          <div className="flex items-start gap-3">
+            <Users className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">Gender</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatValue(employee.gender)}
+              </p>
+            </div>
+          </div>
+
+          {/* Email */}
+          <div className="flex items-start gap-3">
+            <Mail className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div className="min-w-0">
+              <p className="text-xs text-gray-500">Email</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5 break-all">
+                {formatValue(employee.email)}
+              </p>
+            </div>
+          </div>
+
+          {/* Phone */}
+          <div className="flex items-start gap-3">
+            <Phone className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">Phone</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatValue(employee.phone)}
+              </p>
+            </div>
+          </div>
+
+          {/* Address */}
+          <div className="flex items-start gap-3">
+            <MapPin className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">Address</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatValue(employee.address)}
+              </p>
+            </div>
+          </div>
+
+          {/* Emergency Contact */}
+          <div className="flex items-start gap-3">
+            <Phone className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">Emergency Contact</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatValue(employee.emergencyContact)}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Employment Information */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          Employment Information
+        </h3>
+
+        <div className="space-y-4">
+          {/* Employee Number */}
+          <div className="flex items-start gap-3">
+            <Briefcase className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">Employee Number</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatValue(employee.employeeNumber)}
+              </p>
+            </div>
+          </div>
+
+          {/* Department */}
+          <div className="flex items-start gap-3">
+            <Briefcase className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">Department</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatValue(employee.department)}
+              </p>
+            </div>
+          </div>
+
+          {/* Position */}
+          <div className="flex items-start gap-3">
+            <Briefcase className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">Position</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatValue(employee.position)}
+              </p>
+            </div>
+          </div>
+
+          {/* Role */}
+          <div className="flex items-start gap-3">
+            <Users className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">System Role</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatValue(employee.role)}
+              </p>
+            </div>
+          </div>
+
+          {/* Employment Status <Briefcase className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+ */}
+          <div className="flex items-start gap-4">
+            <div className="flex items-center gap-2">
+              <span
+                className={`mt-1.5 h-3 w-3 rounded-full ${employee.employmentStatus === "Active"
+                    ? "bg-green-500"
+                    : employee.employmentStatus === "Inactive"
+                      ? "bg-gray-400"
+                      : employee.employmentStatus === "On Leave"
+                        ? "bg-yellow-500"
+                        : "bg-red-500"
+                  }`}
+              />
+            </div>
+
+            <div>
+              <p className="text-xs text-gray-500">Employment Status</p>
+              <p className="mt-0.5 text-sm font-medium text-gray-900">
+                {formatValue(employee.employmentStatus)}
+              </p>
+            </div>
+          </div>
+
+          {/* Hire Date */}
+          <div className="flex items-start gap-3">
+            <CalendarDays className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">Hire Date</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatDate(employee.hireDate)}
+              </p>
+            </div>
+          </div>
+
+          {/* Salary */}
+          <div className="flex items-start gap-3">
+            <Briefcase className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
+
+            <div>
+              <p className="text-xs text-gray-500">Salary</p>
+              <p className="text-sm font-medium text-gray-900 mt-0.5">
+                {formatSalary(employee.salary)}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Recent Attendance */}
+    <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-lg font-semibold text-gray-900">
+            Recent Attendance
+          </h3>
+          <p className="text-sm text-gray-500 mt-1">
+            Latest attendance records for this employee
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {attendance.slice(0, 5).map((a: any) => (
+          <div
+            key={a.id}
+            className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0"
+          >
+            <div>
+              <p className="text-sm font-medium text-gray-900">
+                {formatDate(a.date)}
+              </p>
+
+              {a.checkIn && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Check-in: {a.checkIn}
+                </p>
+              )}
+            </div>
+
+            <Badge
+              variant={
+                a.status === 'Present'
+                  ? 'success'
+                  : a.status === 'Late'
+                    ? 'warning'
+                    : a.status === 'Absent'
+                      ? 'danger'
+                      : 'info'
+              }
+              dot
+            >
+              {formatValue(a.status)}
+            </Badge>
+          </div>
+        ))}
+
+        {attendance.length === 0 && (
+          <p className="text-sm text-gray-500 py-2">
+            No attendance records.
+          </p>
+        )}
+      </div>
+    </div>
+
+    {/* Leave History */}
+    <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold text-gray-900">
+          Leave History
+        </h3>
+        <p className="text-sm text-gray-500 mt-1">
+          Recent leave requests for this employee
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        {leaves.slice(0, 5).map((l: any) => (
+          <div
+            key={l.id}
+            className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0"
+          >
+            <div>
+              <p className="text-sm font-medium text-gray-900">
+                {formatValue(l.type)}
+              </p>
+
+              <p className="text-xs text-gray-500 mt-1">
+                {formatDate(l.startDate)} - {formatDate(l.endDate)}
+              </p>
+            </div>
+
+            <Badge
+              variant={
+                l.status === 'Approved'
+                  ? 'success'
+                  : l.status === 'Rejected'
+                    ? 'danger'
+                    : 'warning'
+              }
+              dot
+            >
+              {formatValue(l.status)}
+            </Badge>
+          </div>
+        ))}
+
+        {leaves.length === 0 && (
+          <p className="text-sm text-gray-500 py-2">
+            No leave requests.
+          </p>
+        )}
+      </div>
+    </div>
+
+    {/* Performance Reviews */}
+    <div className="bg-white rounded-xl border border-gray-200 p-5">
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold text-gray-900">
+          Performance Reviews
+        </h3>
+        <p className="text-sm text-gray-500 mt-1">
+          Performance history for this employee
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        {performance.map((p: any) => (
+          <div
+            key={p.id}
+            className="flex items-center justify-between py-3 border-b border-gray-100 last:border-0"
+          >
+            <div>
+              <p className="text-sm font-medium text-gray-900">
+                Review - {formatDate(p.reviewDate)}
+              </p>
+
+              <p className="text-xs text-gray-500 mt-1">
+                Rating: {formatValue(p.rating)}/5
+              </p>
+            </div>
+
+            <Badge
+              variant={
+                p.status === 'Completed'
+                  ? 'success'
+                  : 'warning'
+              }
+            >
+              {formatValue(p.status)}
+            </Badge>
+          </div>
+        ))}
+
+        {performance.length === 0 && (
+          <p className="text-sm text-gray-500 py-2">
+            No performance reviews.
+          </p>
+        )}
+      </div>
+    </div>
+  </div>
+
+
+  );
+}
+
+
+/* --- Employee Detail Page ---
+export function EmployeeDetailPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [employee, setEmployee] = useState<any>(null);
+  const [attendance, setAttendance] = useState<any[]>([]);
+  const [leaves, setLeaves] = useState<any[]>([]);
+  const [performance, setPerformance] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (id) loadData(id);
+  }, [id]);
+
+  const loadData = async (empId: string) => {
+    setLoading(true);
+    try {
+      const emp = await employeeService.getById(empId);
+      setEmployee(emp);
+      const att = await attendanceService.getByEmployee(empId);
+      setAttendance(att);
+      const lv = await leaveService.getAll({ employeeId: empId });
+      setLeaves(lv);
+      const perf = await performanceService.getByEmployee(empId);
+      setPerformance(perf);
+    } catch { } finally { setLoading(false); }
+  };
+
+  if (loading) return <LoadingState />;
+  if (!employee) return <EmptyState title="Employee not found" />;
+
+  return (
+    <div>
+      <button onClick={() => navigate('/management/employees')} className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4">
+        <ChevronLeft className="h-4 w-4" /> Back to Employees
+      </button>
+
+      <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+        <div className="flex flex-col sm:flex-row items-start gap-6">
+          <div className="w-20 h-20 bg-indigo-100 text-indigo-700 rounded-2xl flex items-center justify-center text-2xl font-bold flex-shrink-0">
+            {employee.firstName[0]}{employee.lastName[0]}
+          </div>
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold text-gray-900">{employee.firstName} {employee.lastName}</h1>
+            <p className="text-sm text-gray-500 mt-1">{employee.position} • {employee.department}</p>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <Badge variant={employee.employmentStatus === 'Active' ? 'success' : 'warning'} dot>{employee.employmentStatus}</Badge>
+              <Badge variant="info">{employee.role}</Badge>
+              <Badge variant="neutral">{employee.id}</Badge>
+            </div>
+          </div>
+          <button onClick={() => navigate(`/management/employees/${employee.id}/edit`)} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 flex items-center gap-2">
+            <Pencil className="h-4 w-4" /> Edit
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Contact Information 
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Contact Information</h3>
+          <div className="space-y-3">
+            <div className="flex items-center gap-3"><Mail className="h-4 w-4 text-gray-400" /><span className="text-sm text-gray-700">{employee.email}</span></div>
+            <div className="flex items-center gap-3"><Phone className="h-4 w-4 text-gray-400" /><span className="text-sm text-gray-700">{employee.phone}</span></div>
+            <div className="flex items-center gap-3"><MapPin className="h-4 w-4 text-gray-400" /><span className="text-sm text-gray-700">{employee.address}</span></div>
+            <div className="flex items-center gap-3"><Briefcase className="h-4 w-4 text-gray-400" /><span className="text-sm text-gray-700">Hired: {employee.hireDate}</span></div>
+          </div>
+        </div>
+
+        {/* Attendance Summary 
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Recent Attendance</h3>
+          <div className="space-y-2">
+            {attendance.slice(0, 5).map((a: any) => (
+              <div key={a.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                <span className="text-sm text-gray-600">{a.date}</span>
+                <Badge variant={a.status === 'Present' ? 'success' : a.status === 'Late' ? 'warning' : a.status === 'Absent' ? 'danger' : 'info'} dot>{a.status}</Badge>
+              </div>
+            ))}
+            {attendance.length === 0 && <p className="text-sm text-gray-500">No attendance records.</p>}
+          </div>
+        </div>
+
+        {/* Leave History 
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Leave History</h3>
+          <div className="space-y-2">
+            {leaves.slice(0, 5).map((l: any) => (
+              <div key={l.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{l.type}</p>
+                  <p className="text-xs text-gray-500">{l.startDate} - {l.endDate}</p>
+                </div>
+                <Badge variant={l.status === 'Approved' ? 'success' : l.status === 'Rejected' ? 'danger' : 'warning'} dot>{l.status}</Badge>
+              </div>
+            ))}
+            {leaves.length === 0 && <p className="text-sm text-gray-500">No leave requests.</p>}
+          </div>
+        </div>
+
+        {/* Performance 
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Performance Reviews</h3>
+          <div className="space-y-2">
+            {performance.map((p: any) => (
+              <div key={p.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Review - {p.reviewDate}</p>
+                  <p className="text-xs text-gray-500">Rating: {p.rating}/5</p>
+                </div>
+                <Badge variant={p.status === 'Completed' ? 'success' : 'warning'}>{p.status}</Badge>
+              </div>
+            ))}
+            {performance.length === 0 && <p className="text-sm text-gray-500">No performance reviews.</p>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}*/
+
+// --- Employee Form Page (Create/Edit) ---
+export function EmployeeFormPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
   const { addToast } = useToast();
 
   const isEdit = !!id;
 
-  const [loading, setLoading] =
-    useState(isEdit);
-
-  const [saving, setSaving] =
-    useState(false);
-
-  const [generatingNumber, setGeneratingNumber] =
-    useState(!isEdit);
+  const [loading, setLoading] = useState(isEdit);
+  const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState({
     employeeNumber: '',
@@ -44,175 +780,63 @@ export function EmployeeFormPage() {
     gender: 'Male',
   });
 
-  const [errors, setErrors] =
-    useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // ==========================================================
-  // LOAD EMPLOYEE WHEN EDITING
-  // OR GENERATE NUMBER WHEN CREATING
-  // ==========================================================
-
+  // Load employee when editing
   useEffect(() => {
-
-    let cancelled = false;
-
-    const loadForm = async () => {
-
-      // ------------------------------------------------------
-      // EDIT
-      // ------------------------------------------------------
-
-      if (id) {
-
-        setLoading(true);
-
-        try {
-
-          const emp =
-              await employeeService.getById(id);
-
-          if (!cancelled && emp) {
-
-            setForm({
-              employeeNumber:
-                emp.employeeNumber || '',
-
-              firstName:
-                emp.firstName || '',
-
-              lastName:
-                emp.lastName || '',
-
-              email:
-                emp.email || '',
-
-              phone:
-                emp.phone || '',
-
-              department:
-                emp.department || 'Engineering',
-
-              position:
-                emp.position || '',
-
-              role:
-                emp.role || 'Employee',
-
-              employmentStatus:
-                emp.employmentStatus || 'Active',
-
-              hireDate:
-                emp.hireDate || '',
-
-              address:
-                emp.address || '',
-
-              emergencyContact:
-                emp.emergencyContact || '',
-
-              salary:
-                emp.salary !== null &&
-                emp.salary !== undefined
-                  ? String(emp.salary)
-                  : '',
-
-              gender:
-                emp.gender || 'Male',
-            });
-          }
-
-        } catch (error) {
-
-          console.error(
-            'Failed to load employee:',
-            error
-          );
-
-          if (!cancelled) {
-
-            addToast(
-              'error',
-              'Failed to load employee',
-              'Unable to load employee information.'
-            );
-          }
-
-        } finally {
-
-          if (!cancelled) {
-            setLoading(false);
-          }
-        }
-
-        return;
-      }
-
-      // ------------------------------------------------------
-      // CREATE
-      // ------------------------------------------------------
-
+    if (!id) {
       setLoading(false);
-      setGeneratingNumber(true);
+      return;
+    }
 
-      try {
+    employeeService
+      .getById(id)
+      .then((emp) => {
 
-        const result =
-            await employeeService.getNextNumber();
-
-        if (
-          !cancelled &&
-          result?.employeeNumber
-        ) {
-
-          setForm((current) => ({
-            ...current,
-            employeeNumber:
-              result.employeeNumber,
-          }));
+        if (emp) {
+          setForm({
+            employeeNumber: emp.employeeNumber || '',
+            firstName: emp.firstName || '',
+            lastName: emp.lastName || '',
+            email: emp.email || '',
+            phone: emp.phone || '',
+            department: emp.department || 'Engineering',
+            position: emp.position || '',
+            role: emp.role || 'Employee',
+            employmentStatus: emp.employmentStatus || 'Active',
+            hireDate: emp.hireDate || '',
+            address: emp.address || '',
+            emergencyContact: emp.emergencyContact || '',
+            salary: emp.salary ? String(emp.salary) : '',
+            gender: emp.gender || 'Male',
+          });
         }
 
-      } catch (error) {
+        setLoading(false);
+      })
+      .catch((error) => {
 
-        console.error(
-          'Failed to generate employee number:',
-          error
+        console.error('Failed to load employee:', error);
+
+        addToast(
+          'error',
+          'Failed to load employee',
+          'Unable to load employee information.'
         );
 
-        if (!cancelled) {
+        setLoading(false);
+      });
 
-          addToast(
-            'error',
-            'Employee number unavailable',
-            'Unable to generate the employee number.'
-          );
-        }
+  }, [id]);
 
-      } finally {
-
-        if (!cancelled) {
-          setGeneratingNumber(false);
-        }
-      }
-    };
-
-    loadForm();
-
-    return () => {
-      cancelled = true;
-    };
-
-  }, [id, addToast]);
-
-  // ==========================================================
-  // VALIDATION
-  // ==========================================================
-
+  // Validate form
   const validate = () => {
 
     const errs: Record<string, string> = {};
 
-    // Employee number is NOT validated here.
-    // Backend generates it automatically.
+    if (!form.employeeNumber.trim()) {
+      errs.employeeNumber = 'Required';
+    }
 
     if (!form.firstName.trim()) {
       errs.firstName = 'Required';
@@ -239,13 +863,8 @@ export function EmployeeFormPage() {
     return Object.keys(errs).length === 0;
   };
 
-  // ==========================================================
-  // CREATE / UPDATE
-  // ==========================================================
-
-  const handleSubmit = async (
-    e: React.FormEvent
-  ) => {
+  // Create or update employee
+  const handleSubmit = async (e: React.FormEvent) => {
 
     e.preventDefault();
 
@@ -257,73 +876,28 @@ export function EmployeeFormPage() {
 
     try {
 
-      // ------------------------------------------------------
-      // CREATE / UPDATE DATA
-      // ------------------------------------------------------
-
-      const employeeData: any = {
-
-        firstName:
-          form.firstName.trim(),
-
-        lastName:
-          form.lastName.trim(),
-
-        email:
-          form.email.trim(),
-
-        phone:
-          form.phone.trim(),
-
-        department:
-          form.department,
-
-        position:
-          form.position.trim(),
-
-        role:
-          form.role,
-
-        employmentStatus:
-          form.employmentStatus,
-
-        hireDate:
-          form.hireDate || null,
-
-        address:
-          form.address.trim(),
-
-        emergencyContact:
-          form.emergencyContact.trim(),
-
-        salary:
-          form.salary
-            ? Number(form.salary)
-            : null,
-
-        gender:
-          form.gender,
+      const employeeData = {
+        employeeNumber: form.employeeNumber,
+        firstName: form.firstName,
+        lastName: form.lastName,
+        email: form.email,
+        phone: form.phone,
+        department: form.department,
+        position: form.position,
+        role: form.role,
+        employmentStatus: form.employmentStatus,
+        hireDate: form.hireDate || null,
+        address: form.address,
+        emergencyContact: form.emergencyContact,
+        salary: form.salary
+          ? Number(form.salary)
+          : null,
+        gender: form.gender,
       };
-
-      // ------------------------------------------------------
-      // EDIT
-      // ------------------------------------------------------
 
       if (isEdit) {
 
-        /*
-         * Keep the existing employee number during update.
-         *
-         * The backend also protects it.
-         */
-
-        employeeData.employeeNumber =
-          form.employeeNumber;
-
-        await employeeService.update(
-          id!,
-          employeeData
-        );
+        await employeeService.update(id!, employeeData);
 
         addToast(
           'success',
@@ -331,56 +905,26 @@ export function EmployeeFormPage() {
           'Employee information has been updated successfully.'
         );
 
-      }
+      } else {
 
-      // ------------------------------------------------------
-      // CREATE
-      // ------------------------------------------------------
-
-      else {
-
-        /*
-         * IMPORTANT:
-         *
-         * Do NOT send employeeNumber.
-         *
-         * The backend generates the authoritative
-         * employee number.
-         */
-
-        const createdEmployee =
-            await employeeService.create(
-              employeeData
-            );
-
-        const generatedNumber =
-          createdEmployee?.employeeNumber;
+        await employeeService.create(employeeData);
 
         addToast(
           'success',
           'Employee created',
-          generatedNumber
-            ? `Employee ${generatedNumber} has been created successfully.`
-            : 'Employee has been created successfully.'
+          'Employee has been created successfully.'
         );
       }
 
-      navigate(
-        '/management/employees'
-      );
+      navigate('/management/employees');
 
     } catch (error) {
 
-      console.error(
-        'Employee save error:',
-        error
-      );
+      console.error('Employee save error:', error);
 
       addToast(
         'error',
-        isEdit
-          ? 'Update failed'
-          : 'Creation failed',
+        isEdit ? 'Update failed' : 'Creation failed',
         isEdit
           ? 'Unable to update the employee.'
           : 'Unable to create the employee.'
@@ -389,52 +933,28 @@ export function EmployeeFormPage() {
     } finally {
 
       setSaving(false);
+
     }
   };
-
-  // ==========================================================
-  // LOADING
-  // ==========================================================
 
   if (loading) {
     return <LoadingState />;
   }
 
-  // ==========================================================
-  // PAGE
-  // ==========================================================
-
   return (
     <div>
 
-      {/* BACK */}
-
       <button
-        onClick={() =>
-          navigate(
-            '/management/employees'
-          )
-        }
+        onClick={() => navigate('/management/employees')}
         className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4"
       >
-
         <ChevronLeft className="h-4 w-4" />
-
         Back to Employees
-
       </button>
 
-      {/* TITLE */}
-
       <h1 className="text-2xl font-bold text-gray-900 mb-6">
-
-        {isEdit
-          ? 'Edit Employee'
-          : 'Add New Employee'}
-
+        {isEdit ? 'Edit Employee' : 'Add New Employee'}
       </h1>
-
-      {/* FORM */}
 
       <form
         onSubmit={handleSubmit}
@@ -443,35 +963,19 @@ export function EmployeeFormPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-          {/* ==================================================
-              EMPLOYEE NUMBER
-              ================================================== */}
-
-          <div>
-
-            <FormInput
-              label="Employee Number"
-              value={
-                generatingNumber
-                  ? 'Generating...'
-                  : form.employeeNumber
-              }
-              readOnly
-              error={errors.employeeNumber}
-              placeholder="EMP001"
-            />
-
-            <p className="mt-1.5 text-xs text-gray-500">
-
-              {isEdit
-                ? 'Employee number is automatically assigned and cannot be changed.'
-                : 'StaffHub automatically generates the next employee number.'}
-
-            </p>
-
-          </div>
-
-          {/* FIRST NAME */}
+          <FormInput
+            label="Employee Number"
+            required
+            value={form.employeeNumber}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                employeeNumber: e.target.value,
+              })
+            }
+            error={errors.employeeNumber}
+            placeholder="EMP001"
+          />
 
           <FormInput
             label="First Name"
@@ -480,14 +984,11 @@ export function EmployeeFormPage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                firstName:
-                  e.target.value,
+                firstName: e.target.value,
               })
             }
             error={errors.firstName}
           />
-
-          {/* LAST NAME */}
 
           <FormInput
             label="Last Name"
@@ -496,14 +997,11 @@ export function EmployeeFormPage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                lastName:
-                  e.target.value,
+                lastName: e.target.value,
               })
             }
             error={errors.lastName}
           />
-
-          {/* EMAIL */}
 
           <FormInput
             label="Email"
@@ -513,14 +1011,11 @@ export function EmployeeFormPage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                email:
-                  e.target.value,
+                email: e.target.value,
               })
             }
             error={errors.email}
           />
-
-          {/* PHONE */}
 
           <FormInput
             label="Phone"
@@ -528,13 +1023,10 @@ export function EmployeeFormPage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                phone:
-                  e.target.value,
+                phone: e.target.value,
               })
             }
           />
-
-          {/* DEPARTMENT */}
 
           <FormSelect
             label="Department"
@@ -542,19 +1034,14 @@ export function EmployeeFormPage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                department:
-                  e.target.value,
+                department: e.target.value,
               })
             }
-            options={DEPARTMENTS.map(
-              (d) => ({
-                value: d,
-                label: d,
-              })
-            )}
+            options={DEPARTMENTS.map((d) => ({
+              value: d,
+              label: d,
+            }))}
           />
-
-          {/* POSITION */}
 
           <FormInput
             label="Position"
@@ -563,14 +1050,11 @@ export function EmployeeFormPage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                position:
-                  e.target.value,
+                position: e.target.value,
               })
             }
             error={errors.position}
           />
-
-          {/* ROLE */}
 
           <FormSelect
             label="Role"
@@ -578,8 +1062,7 @@ export function EmployeeFormPage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                role:
-                  e.target.value,
+                role: e.target.value,
               })
             }
             options={[
@@ -589,39 +1072,26 @@ export function EmployeeFormPage() {
               'Training Coordinator',
               'Grievance Officer',
               'Event Organizer',
-            ].map(
-              (r) => ({
-                value: r,
-                label: r,
-              })
-            )}
+            ].map((r) => ({
+              value: r,
+              label: r,
+            }))}
           />
-
-          {/* STATUS */}
 
           <FormSelect
             label="Status"
-            value={
-              form.employmentStatus
-            }
+            value={form.employmentStatus}
             onChange={(e) =>
               setForm({
                 ...form,
-                employmentStatus:
-                  e.target.value,
+                employmentStatus: e.target.value,
               })
             }
-            options={
-              EMPLOYEE_STATUSES.map(
-                (s) => ({
-                  value: s,
-                  label: s,
-                })
-              )
-            }
+            options={EMPLOYEE_STATUSES.map((s) => ({
+              value: s,
+              label: s,
+            }))}
           />
-
-          {/* GENDER */}
 
           <FormSelect
             label="Gender"
@@ -629,27 +1099,15 @@ export function EmployeeFormPage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                gender:
-                  e.target.value,
+                gender: e.target.value,
               })
             }
             options={[
-              {
-                value: 'Male',
-                label: 'Male',
-              },
-              {
-                value: 'Female',
-                label: 'Female',
-              },
-              {
-                value: 'Other',
-                label: 'Other',
-              },
+              { value: 'Male', label: 'Male' },
+              { value: 'Female', label: 'Female' },
+              { value: 'Other', label: 'Other' },
             ]}
           />
-
-          {/* HIRE DATE */}
 
           <FormInput
             label="Hire Date"
@@ -659,14 +1117,11 @@ export function EmployeeFormPage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                hireDate:
-                  e.target.value,
+                hireDate: e.target.value,
               })
             }
             error={errors.hireDate}
           />
-
-          {/* SALARY */}
 
           <FormInput
             label="Salary"
@@ -675,15 +1130,12 @@ export function EmployeeFormPage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                salary:
-                  e.target.value,
+                salary: e.target.value,
               })
             }
           />
 
         </div>
-
-        {/* ADDRESS */}
 
         <FormTextarea
           label="Address"
@@ -691,40 +1143,28 @@ export function EmployeeFormPage() {
           onChange={(e) =>
             setForm({
               ...form,
-              address:
-                e.target.value,
+              address: e.target.value,
             })
           }
           rows={2}
         />
 
-        {/* EMERGENCY CONTACT */}
-
         <FormInput
           label="Emergency Contact"
-          value={
-            form.emergencyContact
-          }
+          value={form.emergencyContact}
           onChange={(e) =>
             setForm({
               ...form,
-              emergencyContact:
-                e.target.value,
+              emergencyContact: e.target.value,
             })
           }
         />
-
-        {/* BUTTONS */}
 
         <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
 
           <button
             type="button"
-            onClick={() =>
-              navigate(
-                '/management/employees'
-              )
-            }
+            onClick={() => navigate('/management/employees')}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
           >
             Cancel
@@ -732,18 +1172,12 @@ export function EmployeeFormPage() {
 
           <button
             type="submit"
-            disabled={
-              saving ||
-              (!isEdit &&
-                generatingNumber)
-            }
+            disabled={saving}
             className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
           >
 
             {saving && (
-              <Loader2
-                className="h-4 w-4 animate-spin"
-              />
+              <Loader2 className="h-4 w-4 animate-spin" />
             )}
 
             {isEdit
