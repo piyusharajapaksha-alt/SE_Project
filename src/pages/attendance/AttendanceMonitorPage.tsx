@@ -23,6 +23,7 @@ const QR_SECONDS = 10;
 const POLL_INTERVAL = 2000;
 
 export default function AttendanceMonitorPage() {
+
   const [monitor, setMonitor] =
     useState<AttendanceMonitor | null>(null);
 
@@ -43,14 +44,19 @@ export default function AttendanceMonitorPage() {
   // ============================================================
 
   const updateCountdown = useCallback(
-    (result: AttendanceMonitor | null | undefined) => {
-      // IMPORTANT:
-      // Never access result.active unless result exists.
+    (
+      result:
+        | AttendanceMonitor
+        | null
+        | undefined
+    ) => {
+
       if (
         !result ||
         !result.active ||
         !result.qrExpiresAt
       ) {
+
         if (mountedRef.current) {
           setSeconds(QR_SECONDS);
         }
@@ -66,6 +72,7 @@ export default function AttendanceMonitorPage() {
       if (
         Number.isNaN(expiryTime)
       ) {
+
         if (mountedRef.current) {
           setSeconds(QR_SECONDS);
         }
@@ -82,6 +89,7 @@ export default function AttendanceMonitorPage() {
         );
 
       if (mountedRef.current) {
+
         setSeconds(
           Math.max(
             0,
@@ -102,57 +110,77 @@ export default function AttendanceMonitorPage() {
       async (
         showLoading = false
       ) => {
-        if (showLoading && mountedRef.current) {
+
+        if (
+          showLoading &&
+          mountedRef.current
+        ) {
+
           setLoading(true);
         }
 
         try {
+
           setError(null);
 
+          /*
+           * getAttendanceMonitor() automatically:
+           *
+           * 1. Reads the monitor ID from localStorage.
+           * 2. Sends it to the backend.
+           * 3. Creates a monitor if no ID exists.
+           * 4. Saves the returned monitor ID.
+           */
           const result =
             await getAttendanceMonitor();
 
-          // ======================================================
-          // IMPORTANT SAFETY CHECK
-          // ======================================================
-
           if (!result) {
+
             throw new Error(
               'Attendance monitor API returned an empty response.'
             );
           }
 
-          if (!mountedRef.current) {
+          if (
+            !mountedRef.current
+          ) {
             return;
           }
 
           setMonitor(result);
 
           updateCountdown(result);
+
         } catch (err) {
+
           console.error(
             'Attendance monitor error:',
             err
           );
 
-          if (!mountedRef.current) {
+          if (
+            !mountedRef.current
+          ) {
             return;
           }
 
           /*
-           * Do not destroy an already loaded monitor because
-           * one polling request temporarily failed.
+           * Keep the existing monitor visible if a
+           * temporary polling request fails.
            */
           setError(
             err instanceof Error
               ? err.message
               : 'Unable to load attendance monitor.'
           );
+
         } finally {
+
           if (
             showLoading &&
             mountedRef.current
           ) {
+
             setLoading(false);
           }
         }
@@ -165,6 +193,7 @@ export default function AttendanceMonitorPage() {
   // ============================================================
 
   useEffect(() => {
+
     mountedRef.current = true;
 
     void loadMonitor(true);
@@ -172,12 +201,15 @@ export default function AttendanceMonitorPage() {
     return () => {
       mountedRef.current = false;
     };
+
   }, [loadMonitor]);
 
   // ============================================================
   // POLLING
   //
-  // This allows the monitor to detect:
+  // The same monitor ID is now reused.
+  //
+  // This allows the page to detect:
   //
   // 1. Authorization
   // 2. Activation
@@ -186,6 +218,7 @@ export default function AttendanceMonitorPage() {
   // ============================================================
 
   useEffect(() => {
+
     const timer =
       window.setInterval(
         () => {
@@ -197,6 +230,7 @@ export default function AttendanceMonitorPage() {
     return () => {
       window.clearInterval(timer);
     };
+
   }, [loadMonitor]);
 
   // ============================================================
@@ -204,6 +238,7 @@ export default function AttendanceMonitorPage() {
   // ============================================================
 
   useEffect(() => {
+
     if (
       !monitor ||
       !monitor.active ||
@@ -225,6 +260,7 @@ export default function AttendanceMonitorPage() {
     return () => {
       window.clearInterval(timer);
     };
+
   }, [
     monitor,
     updateCountdown,
@@ -234,15 +270,24 @@ export default function AttendanceMonitorPage() {
   // LOADING
   // ============================================================
 
-  if (loading && !monitor) {
+  if (
+    loading &&
+    !monitor
+  ) {
+
     return (
       <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6">
+
         <div className="text-center">
 
           <div className="flex justify-center mb-6">
+
             <div className="h-16 w-16 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+
               <ShieldCheck className="h-9 w-9" />
+
             </div>
+
           </div>
 
           <p className="text-indigo-400 font-semibold uppercase tracking-[0.25em] text-sm">
@@ -264,15 +309,17 @@ export default function AttendanceMonitorPage() {
           </div>
 
         </div>
+
       </div>
     );
   }
 
   // ============================================================
-  // NO MONITOR RESPONSE
+  // NO MONITOR
   // ============================================================
 
   if (!monitor) {
+
     return (
       <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6">
 
@@ -301,6 +348,7 @@ export default function AttendanceMonitorPage() {
           </p>
 
           {error && (
+
             <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 px-6 py-4 text-left">
 
               <div className="flex gap-3">
@@ -331,9 +379,11 @@ export default function AttendanceMonitorPage() {
             }}
             className="mt-8 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 font-semibold transition hover:bg-indigo-500"
           >
+
             <RefreshCw className="h-4 w-4" />
 
             Try Again
+
           </button>
 
         </div>
@@ -343,22 +393,14 @@ export default function AttendanceMonitorPage() {
   }
 
   // ============================================================
-  // TEMPORARY ACTIVATION CODE
-  //
-  // This screen is shown when:
-  //
-  // active = false
-  //
-  // regardless of whether the monitor has already been
-  // authorized.
-  //
-  // The activation code remains visible until activation.
+  // WAITING FOR AUTHORIZATION / ACTIVATION
   // ============================================================
 
   if (
     !monitor.active ||
     !monitor.currentQrToken
   ) {
+
     return (
       <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6">
 
@@ -383,11 +425,15 @@ export default function AttendanceMonitorPage() {
           </h1>
 
           <p className="mt-5 text-slate-400 max-w-2xl mx-auto leading-relaxed">
+
             Enter this temporary activation code in
+
             <span className="text-white font-semibold">
               {' '}Attendance Management
             </span>
+
             {' '}to authorize this monitor.
+
           </p>
 
           {/* ====================================================
@@ -407,9 +453,12 @@ export default function AttendanceMonitorPage() {
             </div>
 
             {monitor.activationCode && (
+
               <p className="mt-5 text-sm text-slate-500">
+
                 Give this 6-digit code to the authorized
                 company administrator.
+
               </p>
             )}
 
@@ -442,9 +491,12 @@ export default function AttendanceMonitorPage() {
           </div>
 
           {error && (
+
             <p className="mt-5 text-xs text-amber-400">
+
               Connection temporarily unavailable.
               Retrying automatically...
+
             </p>
           )}
 
@@ -472,6 +524,7 @@ export default function AttendanceMonitorPage() {
         </h1>
 
         {monitor.companyName && (
+
           <p className="mt-3 text-slate-400">
             {monitor.companyName}
           </p>
@@ -538,6 +591,7 @@ export default function AttendanceMonitorPage() {
         </div>
 
         {error && (
+
           <div className="mt-6 inline-flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-2 text-xs text-amber-300">
 
             <RefreshCw className="h-3.5 w-3.5" />
@@ -553,4 +607,3 @@ export default function AttendanceMonitorPage() {
     </div>
   );
 }
-

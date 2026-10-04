@@ -133,31 +133,137 @@ export interface AttendanceSchedule {
 }
 
 // ============================================================
+// QR MONITOR STORAGE
+// ============================================================
+
+const ATTENDANCE_MONITOR_STORAGE_KEY =
+  'staffhub_attendance_monitor_id';
+
+function getStoredMonitorId(): number | undefined {
+  try {
+    const stored =
+      window.localStorage.getItem(
+        ATTENDANCE_MONITOR_STORAGE_KEY
+      );
+
+    if (!stored) {
+      return undefined;
+    }
+
+    const parsed =
+      Number(stored);
+
+    if (
+      !Number.isInteger(parsed) ||
+      parsed <= 0
+    ) {
+      window.localStorage.removeItem(
+        ATTENDANCE_MONITOR_STORAGE_KEY
+      );
+
+      return undefined;
+    }
+
+    return parsed;
+  } catch (error) {
+    console.warn(
+      'Unable to read attendance monitor ID from localStorage.',
+      error
+    );
+
+    return undefined;
+  }
+}
+
+function saveStoredMonitorId(
+  monitorId: number
+): void {
+  try {
+    if (
+      Number.isInteger(monitorId) &&
+      monitorId > 0
+    ) {
+      window.localStorage.setItem(
+        ATTENDANCE_MONITOR_STORAGE_KEY,
+        String(monitorId)
+      );
+    }
+  } catch (error) {
+    console.warn(
+      'Unable to save attendance monitor ID.',
+      error
+    );
+  }
+}
+
+function clearStoredMonitorId(): void {
+  try {
+    window.localStorage.removeItem(
+      ATTENDANCE_MONITOR_STORAGE_KEY
+    );
+  } catch (error) {
+    console.warn(
+      'Unable to clear attendance monitor ID.',
+      error
+    );
+  }
+}
+
+// ============================================================
 // QR MONITOR
 // ============================================================
 
 /**
- * Get one public monitor.
+ * Get the physical attendance monitor.
  *
- * monitorId identifies the physical monitor.
+ * The monitor ID is stored in localStorage so that:
  *
- * If monitorId is omitted, backend creates a new monitor.
+ * 1. Refreshing the page keeps the same monitor.
+ * 2. The monitor does not create a new DB row every poll.
+ * 3. The same activation code remains associated with the
+ *    physical browser/device.
+ *
+ * If there is no stored monitor ID, the backend creates a
+ * new monitor and this function stores its ID.
  */
-
 export async function getAttendanceMonitor(
   monitorId?: number
 ): Promise<AttendanceMonitor> {
-  const query =
+
+  const storedMonitorId =
     monitorId !== undefined
+      ? monitorId
+      : getStoredMonitorId();
+
+  const query =
+    storedMonitorId !== undefined
       ? `?monitorId=${encodeURIComponent(
-          String(monitorId)
+          String(storedMonitorId)
         )}`
       : '';
 
-  const result =
-    await apiRequest<AttendanceMonitor>(
-      `/api/attendance/monitor${query}`
-    );
+  let result: AttendanceMonitor | undefined;
+
+  try {
+
+    result =
+      await apiRequest<AttendanceMonitor>(
+        `/api/attendance/monitor${query}`
+      );
+
+  } catch (error) {
+
+    /*
+     * If the stored monitor ID became invalid,
+     * clear it so the next request can create a
+     * fresh physical monitor.
+     */
+    if (storedMonitorId !== undefined) {
+      clearStoredMonitorId();
+    }
+
+    throw error;
+  }
 
   if (!result) {
     throw new Error(
@@ -165,10 +271,37 @@ export async function getAttendanceMonitor(
     );
   }
 
+  if (
+    !Number.isInteger(result.id) ||
+    result.id <= 0
+  ) {
+    throw new Error(
+      'Attendance monitor API returned an invalid monitor ID.'
+    );
+  }
+
+  /*
+   * Always save the ID returned by the backend.
+   *
+   * This is important because the backend can create
+   * a replacement monitor when the old ID no longer exists.
+   */
+  saveStoredMonitorId(
+    result.id
+  );
+
   return result;
 }
 
-
+/**
+ * Forget the physical monitor stored in this browser.
+ *
+ * Normally this should not be called by the monitor page.
+ * It is provided for troubleshooting/resetting a device.
+ */
+export function clearAttendanceMonitorStorage(): void {
+  clearStoredMonitorId();
+}
 
 /**
  * Get all monitors accepted by the
@@ -185,12 +318,11 @@ export async function getAcceptedAttendanceMonitors(): Promise<
 /**
  * Accept a new physical monitor using
  * its temporary six-digit activation code.
- *
- * OTP is required ONLY during authorization.
  */
 export async function authorizeAttendanceMonitor(
   code: string
 ): Promise<AttendanceMonitor> {
+
   return apiRequest<AttendanceMonitor>(
     '/api/attendance/monitor/authorize',
     {
@@ -204,12 +336,11 @@ export async function authorizeAttendanceMonitor(
 
 /**
  * Activate an already-authorized monitor.
- *
- * No OTP is required here.
  */
 export async function activateAttendanceMonitor(
   monitorId: number
 ): Promise<AttendanceMonitor> {
+
   return apiRequest<AttendanceMonitor>(
     '/api/attendance/monitor/activate',
     {
@@ -223,12 +354,11 @@ export async function activateAttendanceMonitor(
 
 /**
  * Deactivate an already-authorized monitor.
- *
- * No OTP is required.
  */
 export async function deactivateAttendanceMonitor(
   monitorId: number
 ): Promise<void> {
+
   await apiRequest(
     '/api/attendance/monitor/deactivate',
     {
@@ -243,13 +373,11 @@ export async function deactivateAttendanceMonitor(
 /**
  * Permanently reject/unlink a monitor
  * from the current company.
- *
- * The monitor will return to an unassigned
- * state and receive a new activation code.
  */
 export async function rejectAttendanceMonitor(
   monitorId: number
 ): Promise<void> {
+
   await apiRequest(
     '/api/attendance/monitor/reject',
     {
@@ -268,6 +396,7 @@ export async function rejectAttendanceMonitor(
 export async function rotateAttendanceQr(
   monitorId: number
 ): Promise<AttendanceMonitor> {
+
   return apiRequest<AttendanceMonitor>(
     '/api/attendance/monitor/rotate',
     {
@@ -283,20 +412,12 @@ export async function rotateAttendanceQr(
 // QR SCAN
 // ============================================================
 
-/**
- * Scan attendance QR.
- *
- * Backend requires:
- *
- * employeeId
- * monitorId
- * token
- */
 export async function scanAttendanceQr(
   employeeId: string | number,
   monitorId: number,
   token: string
 ): Promise<AttendanceRecord> {
+
   return apiRequest<AttendanceRecord>(
     '/api/attendance/scan',
     {
@@ -317,6 +438,7 @@ export async function scanAttendanceQr(
 export async function getEmployeeTodayAttendance(
   employeeId: string | number
 ): Promise<AttendanceRecord | null> {
+
   return apiRequest<AttendanceRecord | null>(
     `/api/attendance/employee/${encodeURIComponent(
       String(employeeId)
@@ -327,6 +449,7 @@ export async function getEmployeeTodayAttendance(
 export async function getEmployeeAttendanceHistory(
   employeeId: string | number
 ): Promise<AttendanceRecord[]> {
+
   return apiRequest<AttendanceRecord[]>(
     `/api/attendance/employee/${encodeURIComponent(
       String(employeeId)
@@ -341,6 +464,7 @@ export async function getEmployeeAttendanceHistory(
 export async function getAttendanceRecords(
   date?: string
 ): Promise<AttendanceRecord[]> {
+
   const query =
     date
       ? `?date=${encodeURIComponent(date)}`
@@ -354,6 +478,7 @@ export async function getAttendanceRecords(
 export async function getAttendanceSummary(
   date?: string
 ): Promise<AttendanceSummary> {
+
   const query =
     date
       ? `?date=${encodeURIComponent(date)}`
@@ -367,6 +492,7 @@ export async function getAttendanceSummary(
 export async function getAttendanceEvents(
   limit = 50
 ): Promise<AttendanceEvent[]> {
+
   const safeLimit =
     Math.max(
       1,
@@ -394,6 +520,7 @@ export async function correctAttendance(
     reason: string;
   }
 ): Promise<void> {
+
   await apiRequest(
     `/api/attendance/records/${id}`,
     {
@@ -410,6 +537,7 @@ export async function correctAttendance(
 export async function getAttendanceSchedules(): Promise<
   AttendanceSchedule[]
 > {
+
   return apiRequest<AttendanceSchedule[]>(
     '/api/attendance/schedules'
   );
@@ -421,6 +549,7 @@ export async function createAttendanceSchedule(
     'id' | 'createdAt' | 'updatedAt'
   >
 ): Promise<AttendanceSchedule> {
+
   return apiRequest<AttendanceSchedule>(
     '/api/attendance/schedules',
     {
@@ -437,6 +566,7 @@ export async function updateAttendanceSchedule(
     'id' | 'createdAt' | 'updatedAt'
   >
 ): Promise<AttendanceSchedule> {
+
   return apiRequest<AttendanceSchedule>(
     `/api/attendance/schedules/${id}`,
     {
@@ -449,6 +579,7 @@ export async function updateAttendanceSchedule(
 export async function deleteAttendanceSchedule(
   id: number
 ): Promise<void> {
+
   await apiRequest(
     `/api/attendance/schedules/${id}`,
     {
@@ -462,3 +593,4 @@ export async function deleteAttendanceSchedule(
 // ============================================================
 
 export const QR_ROTATION_SECONDS = 10;
+
