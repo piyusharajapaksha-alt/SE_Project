@@ -241,30 +241,37 @@ export const grievanceService = {
   // ----------------------------------------------------------
 
   async update(
-    grievanceId: number,
-    grievance: UpdateGrievancePayload
-  ): Promise<string> {
-    return apiRequest<string>(
-      `/api/grievances/${grievanceId}`,
-      {
-        method: 'PUT',
+  grievanceId: number,
+  grievance: UpdateGrievancePayload
+): Promise<string> {
+  const params = new URLSearchParams();
 
-        body: {
-          employeeId:
-            grievance.employeeId,
+  params.set(
+    'employeeId',
+    grievance.employeeId
+  );
 
-          category:
-            grievance.category,
+  return apiRequest<string>(
+    `/api/grievances/${grievanceId}?${params.toString()}`,
+    {
+      method: 'PUT',
 
-          priority:
-            grievance.priority,
+      body: {
+        employeeId:
+          grievance.employeeId,
 
-          description:
-            grievance.description,
-        },
-      }
-    );
-  },
+        category:
+          grievance.category,
+
+        priority:
+          grievance.priority,
+
+        description:
+          grievance.description,
+      },
+    }
+  );
+},
 
   // ----------------------------------------------------------
   // Delete own grievance
