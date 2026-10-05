@@ -12,25 +12,187 @@ export function EmployeeListPage() {
   const { checkPermission } = useAuth();
   const { addToast } = useToast();
   const navigate = useNavigate();
+
   const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
+
   const [currentPage, setCurrentPage] = useState(1);
+
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+
   const perPage = 10;
 
-  useEffect(() => { loadEmployees(); }, [search, deptFilter, statusFilter]);
+  // ============================================================
+  // LOAD EMPLOYEES
+  // ============================================================
+  //
+  // IMPORTANT:
+  // The current backend supports:
+  //
+  // GET /api/employees
+  //
+  // The backend already restricts this list to the logged-in
+  // user's company.
+  //
+  // The backend currently does NOT implement:
+  //
+  // ?search=
+  // ?department=
+  // ?status=
+  //
+  // Therefore we fetch the complete company employee list once
+  // and perform filtering on the frontend.
+  // ============================================================
+
+  useEffect(() => {
+    loadEmployees();
+  }, []);
 
   const loadEmployees = async () => {
     setLoading(true);
+
     try {
-      const data = await employeeService.getAll({ search, department: deptFilter, status: statusFilter });
-      setEmployees(data);
-    } catch { } finally { setLoading(false); }
+      const data = await employeeService.getAll();
+
+      setEmployees(
+        Array.isArray(data)
+          ? data
+          : []
+      );
+    } catch (error) {
+      console.error(
+        'Failed to load employees:',
+        error
+      );
+
+      setEmployees([]);
+
+      addToast(
+        'error',
+        'Failed to load employees',
+        'Unable to load employee records.'
+      );
+    } finally {
+      setLoading(false);
+    }
   };
+
+  // ============================================================
+  // FRONTEND FILTERING
+  // ============================================================
+
+  const normalizedSearch = search
+    .trim()
+    .toLowerCase();
+
+  const filteredEmployees = employees.filter(
+    (emp: any) => {
+
+      // --------------------------------------------------------
+      // SEARCH
+      // --------------------------------------------------------
+      //
+      // Search supports:
+      // - Employee number
+      // - First name
+      // - Last name
+      // - Full name
+      // - Email
+      // - Phone
+      // - Department
+      // - Position
+      // - Role
+      // - Employment status
+      // --------------------------------------------------------
+
+      if (normalizedSearch) {
+
+        const firstName =
+          String(emp?.firstName ?? '');
+
+        const lastName =
+          String(emp?.lastName ?? '');
+
+        const fullName =
+          `${firstName} ${lastName}`;
+
+        const searchableValues = [
+          emp?.employeeNumber,
+          firstName,
+          lastName,
+          fullName,
+          emp?.email,
+          emp?.phone,
+          emp?.department,
+          emp?.position,
+          emp?.role,
+          emp?.employmentStatus,
+        ];
+
+        const matchesSearch =
+          searchableValues.some(
+            (value) =>
+              String(value ?? '')
+                .toLowerCase()
+                .includes(normalizedSearch)
+          );
+
+        if (!matchesSearch) {
+          return false;
+        }
+      }
+
+      // --------------------------------------------------------
+      // DEPARTMENT FILTER
+      // --------------------------------------------------------
+
+      if (
+        deptFilter !== 'All' &&
+        String(emp?.department ?? '')
+          .toLowerCase() !==
+          deptFilter.toLowerCase()
+      ) {
+        return false;
+      }
+
+      // --------------------------------------------------------
+      // STATUS FILTER
+      // --------------------------------------------------------
+
+      if (
+        statusFilter !== 'All' &&
+        String(emp?.employmentStatus ?? '')
+          .toLowerCase() !==
+          statusFilter.toLowerCase()
+      ) {
+        return false;
+      }
+
+      return true;
+    }
+  );
+
+  // ============================================================
+  // PAGINATION
+  // ============================================================
+
+  const totalPages = Math.ceil(
+    filteredEmployees.length / perPage
+  );
+
+  const paged = filteredEmployees.slice(
+    (currentPage - 1) * perPage,
+    currentPage * perPage
+  );
+
+  // ============================================================
+  // DELETE EMPLOYEE
+  // ============================================================
 
   const handleDelete = async () => {
     if (!deleteId) {
@@ -45,19 +207,34 @@ export function EmployeeListPage() {
       addToast(
         'success',
         'Employee deleted',
-        'Employee has been deleted successfully.',
+        'Employee has been deleted successfully.'
       );
 
       setDeleteId(null);
 
       await loadEmployees();
 
+      // Make sure we don't remain on a page that no longer exists.
+      if (
+        currentPage > 1 &&
+        paged.length === 1
+      ) {
+        setCurrentPage(
+          currentPage - 1
+        );
+      }
+
     } catch (error) {
+
+      console.error(
+        'Failed to delete employee:',
+        error
+      );
 
       addToast(
         'error',
         'Delete failed',
-        'Unable to delete the employee.',
+        'Unable to delete the employee.'
       );
 
     } finally {
@@ -65,73 +242,368 @@ export function EmployeeListPage() {
     }
   };
 
-  const paged = employees.slice((currentPage - 1) * perPage, currentPage * perPage);
-  const totalPages = Math.ceil(employees.length / perPage);
+  // ============================================================
+  // STATUS BADGE
+  // ============================================================
 
-  const statusBadge = (s: string) => s === 'Active' ? 'success' : s === 'On Leave' ? 'warning' : s === 'Probation' ? 'info' : 'danger';
+  const statusBadge = (
+    status: string
+  ) =>
+    status === 'Active'
+      ? 'success'
+      : status === 'On Leave'
+        ? 'warning'
+        : status === 'Probation'
+          ? 'info'
+          : 'danger';
+
+  // ============================================================
+  // RENDER
+  // ============================================================
 
   return (
     <div>
-      <PageHeader title="Employees" description="Manage employee records and profiles"
-        action={checkPermission('employees.create') ? <button onClick={() => navigate('/management/employees/create')} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 flex items-center gap-2"><Plus className="h-4 w-4" />Add Employee</button> : undefined} />
+
+      {/* ======================================================
+          PAGE HEADER
+          ====================================================== */}
+
+      <PageHeader
+        title="Employees"
+        description="Manage employee records and profiles"
+        action={
+          checkPermission(
+            'employees.create'
+          ) ? (
+            <button
+              onClick={() =>
+                navigate(
+                  '/management/employees/create'
+                )
+              }
+              className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Add Employee
+            </button>
+          ) : undefined
+        }
+      />
+
+      {/* ======================================================
+          SEARCH + FILTERS
+          ====================================================== */}
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
-        <div className="flex-1"><SearchInput value={search} onChange={(v) => { setSearch(v); setCurrentPage(1); }} placeholder="Search by name, email, ID..." /></div>
-        <SelectFilter value={deptFilter} onChange={(v) => { setDeptFilter(v); setCurrentPage(1); }} options={DEPARTMENTS} placeholder="All Departments" />
-        <SelectFilter value={statusFilter} onChange={(v) => { setStatusFilter(v); setCurrentPage(1); }} options={EMPLOYEE_STATUSES} />
+
+        {/* SEARCH */}
+
+        <div className="flex-1">
+          <SearchInput
+            value={search}
+            onChange={(value) => {
+              setSearch(value);
+              setCurrentPage(1);
+            }}
+            placeholder="Search by name, email, ID..."
+          />
+        </div>
+
+        {/* DEPARTMENT */}
+
+        <SelectFilter
+          value={deptFilter}
+          onChange={(value) => {
+            setDeptFilter(value);
+            setCurrentPage(1);
+          }}
+          options={DEPARTMENTS}
+          placeholder="All Departments"
+        />
+
+        {/* STATUS */}
+
+        <SelectFilter
+          value={statusFilter}
+          onChange={(value) => {
+            setStatusFilter(value);
+            setCurrentPage(1);
+          }}
+          options={EMPLOYEE_STATUSES}
+        />
+
       </div>
 
-      {loading ? <LoadingState /> : employees.length === 0 ? <EmptyState icon={<Users className="h-6 w-6" />} title="No employees found" description="Try adjusting your search or filters" /> : (
+      {/* ======================================================
+          CONTENT
+          ====================================================== */}
+
+      {loading ? (
+
+        <LoadingState />
+
+      ) : filteredEmployees.length === 0 ? (
+
+        <EmptyState
+          icon={
+            <Users className="h-6 w-6" />
+          }
+          title="No employees found"
+          description="Try adjusting your search or filters"
+        />
+
+      ) : (
+
         <>
+
+          {/* ==================================================
+              EMPLOYEE TABLE
+              ================================================== */}
+
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+
             <div className="overflow-x-auto">
+
               <table className="w-full text-sm">
+
                 <thead className="bg-gray-50">
+
                   <tr>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Employee</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600 hidden sm:table-cell">Department</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600 hidden md:table-cell">Position</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600 hidden lg:table-cell">Role</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Status</th>
-                    <th className="text-right py-3 px-4 font-medium text-gray-600">Actions</th>
+
+                    <th className="text-left py-3 px-4 font-medium text-gray-600">
+                      Employee
+                    </th>
+
+                    <th className="text-left py-3 px-4 font-medium text-gray-600 hidden sm:table-cell">
+                      Department
+                    </th>
+
+                    <th className="text-left py-3 px-4 font-medium text-gray-600 hidden md:table-cell">
+                      Position
+                    </th>
+
+                    <th className="text-left py-3 px-4 font-medium text-gray-600 hidden lg:table-cell">
+                      Role
+                    </th>
+
+                    <th className="text-left py-3 px-4 font-medium text-gray-600">
+                      Status
+                    </th>
+
+                    <th className="text-right py-3 px-4 font-medium text-gray-600">
+                      Actions
+                    </th>
+
                   </tr>
+
                 </thead>
+
                 <tbody>
-                  {paged.map((emp: any) => (
-                    <tr key={emp.id} className="border-t border-gray-100 hover:bg-gray-50">
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0">
-                            {emp.firstName[0]}{emp.lastName[0]}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-medium text-gray-900 truncate">{emp.firstName} {emp.lastName}</p>
-                            <p className="text-xs text-gray-500 truncate">{emp.email}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-gray-600 hidden sm:table-cell">{emp.department}</td>
-                      <td className="py-3 px-4 text-gray-600 hidden md:table-cell">{emp.position}</td>
-                      <td className="py-3 px-4 text-gray-600 hidden lg:table-cell">{emp.role}</td>
-                      <td className="py-3 px-4"><Badge variant={statusBadge(emp.employmentStatus) as any} dot> {emp.employmentStatus} </Badge></td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center justify-end gap-1">
-                          <button onClick={() => navigate(`/management/employees/${emp.id}`)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg" title="View"><Eye className="h-4 w-4" /></button>
-                          {checkPermission('employees.edit') && <button onClick={() => navigate(`/management/employees/${emp.id}/edit`)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg" title="Edit"><Pencil className="h-4 w-4" /></button>}
-                          {checkPermission('employees.delete') && <button onClick={() => setDeleteId(emp.id)} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="h-4 w-4" /></button>}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+
+                  {paged.map(
+                    (emp: any) => {
+
+                      const firstName =
+                        String(
+                          emp?.firstName ?? ''
+                        );
+
+                      const lastName =
+                        String(
+                          emp?.lastName ?? ''
+                        );
+
+                      const initials =
+                        `${firstName.charAt(0)}${lastName.charAt(0)}`;
+
+                      return (
+
+                        <tr
+                          key={emp.id}
+                          className="border-t border-gray-100 hover:bg-gray-50"
+                        >
+
+                          {/* EMPLOYEE */}
+
+                          <td className="py-3 px-4">
+
+                            <div className="flex items-center gap-3">
+
+                              <div className="w-9 h-9 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                                {initials ||
+                                  '?'}
+                              </div>
+
+                              <div className="min-w-0">
+
+                                <p className="font-medium text-gray-900 truncate">
+                                  {firstName}{' '}
+                                  {lastName}
+                                </p>
+
+                                <p className="text-xs text-gray-500 truncate">
+                                  {emp?.email ??
+                                    ''}
+                                </p>
+
+                              </div>
+
+                            </div>
+
+                          </td>
+
+                          {/* DEPARTMENT */}
+
+                          <td className="py-3 px-4 text-gray-600 hidden sm:table-cell">
+                            {emp?.department ??
+                              '-'}
+                          </td>
+
+                          {/* POSITION */}
+
+                          <td className="py-3 px-4 text-gray-600 hidden md:table-cell">
+                            {emp?.position ??
+                              '-'}
+                          </td>
+
+                          {/* ROLE */}
+
+                          <td className="py-3 px-4 text-gray-600 hidden lg:table-cell">
+                            {emp?.role ??
+                              '-'}
+                          </td>
+
+                          {/* STATUS */}
+
+                          <td className="py-3 px-4">
+
+                            <Badge
+                              variant={
+                                statusBadge(
+                                  emp?.employmentStatus
+                                ) as any
+                              }
+                              dot
+                            >
+                              {emp?.employmentStatus ??
+                                'Unknown'}
+                            </Badge>
+
+                          </td>
+
+                          {/* ACTIONS */}
+
+                          <td className="py-3 px-4">
+
+                            <div className="flex items-center justify-end gap-1">
+
+                              {/* VIEW */}
+
+                              <button
+                                onClick={() =>
+                                  navigate(
+                                    `/management/employees/${emp.id}`
+                                  )
+                                }
+                                className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                                title="View"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </button>
+
+                              {/* EDIT */}
+
+                              {checkPermission(
+                                'employees.edit'
+                              ) && (
+
+                                <button
+                                  onClick={() =>
+                                    navigate(
+                                      `/management/employees/${emp.id}/edit`
+                                    )
+                                  }
+                                  className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                                  title="Edit"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </button>
+
+                              )}
+
+                              {/* DELETE */}
+
+                              {checkPermission(
+                                'employees.delete'
+                              ) && (
+
+                                <button
+                                  onClick={() =>
+                                    setDeleteId(
+                                      String(
+                                        emp.id
+                                      )
+                                    )
+                                  }
+                                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                                  title="Delete"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+
+                              )}
+
+                            </div>
+
+                          </td>
+
+                        </tr>
+
+                      );
+                    }
+                  )}
+
                 </tbody>
+
               </table>
+
             </div>
+
           </div>
-          <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+
+          {/* ==================================================
+              PAGINATION
+              ================================================== */}
+
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={
+              setCurrentPage
+            }
+          />
+
         </>
+
       )}
 
-      <ConfirmDialog isOpen={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={handleDelete} title="Delete Employee" message="Are you sure you want to delete this employee? This action cannot be undone." confirmLabel="Delete" variant="danger" isLoading={deleting} />
+      {/* ======================================================
+          DELETE CONFIRMATION
+          ====================================================== */}
+
+      <ConfirmDialog
+        isOpen={!!deleteId}
+        onClose={() =>
+          setDeleteId(null)
+        }
+        onConfirm={handleDelete}
+        title="Delete Employee"
+        message="Are you sure you want to delete this employee? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+        isLoading={deleting}
+      />
+
     </div>
   );
 }
