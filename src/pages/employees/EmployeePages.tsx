@@ -4,8 +4,31 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
 import { employeeService, attendanceService, leaveService, performanceService } from '@/services/dataServices';
 import { PageHeader, SearchInput, SelectFilter, Badge, Pagination, LoadingState, EmptyState, Modal, ConfirmDialog, FormInput, FormSelect, FormTextarea } from '@/components/ui';
-import { DEPARTMENTS, EMPLOYEE_STATUSES } from '@/config';
-import { Plus, Eye, Pencil, Trash2, Users, Mail, Phone, MapPin, Briefcase, CalendarDays, ChevronLeft, Loader2 } from 'lucide-react';
+import { EMPLOYEE_STATUSES } from '@/config';
+import {
+  departmentService,
+  Department,
+} from '@/services/departmentService';
+
+import DepartmentManagementModal
+  from '@/components/DepartmentManagementModal';
+
+import {
+  Plus,
+  Eye,
+  Pencil,
+  Trash2,
+  Users,
+  Mail,
+  Phone,
+  MapPin,
+  Briefcase,
+  CalendarDays,
+  ChevronLeft,
+  Loader2,
+  Building2,
+} from 'lucide-react';
+//import { Plus, Eye, Pencil, Trash2, Users, Mail, Phone, MapPin, Briefcase, CalendarDays, ChevronLeft, Loader2 } from 'lucide-react';
 
 // --- Employee List Page ---
 export function EmployeeListPage() {
@@ -15,6 +38,21 @@ export function EmployeeListPage() {
 
   const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const [
+    departments,
+    setDepartments,
+  ] = useState<Department[]>([]);
+
+  const [
+    departmentsLoading,
+    setDepartmentsLoading,
+  ] = useState(true);
+
+  const [
+    showDepartmentManager,
+    setShowDepartmentManager,
+  ] = useState(false);
 
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('All');
@@ -51,7 +89,40 @@ export function EmployeeListPage() {
 
   useEffect(() => {
     loadEmployees();
+    loadDepartments();
   }, []);
+
+  const loadDepartments = async () => {
+
+    setDepartmentsLoading(true);
+
+    try {
+
+      const data =
+        await departmentService.getAll();
+
+      setDepartments(data);
+
+    } catch (error) {
+
+      console.error(
+        'Failed to load departments:',
+        error
+      );
+
+      setDepartments([]);
+
+      addToast(
+        'error',
+        'Failed to load departments',
+        'Unable to load company departments.'
+      );
+
+    } finally {
+
+      setDepartmentsLoading(false);
+    }
+  };
 
   const loadEmployees = async () => {
     setLoading(true);
@@ -155,7 +226,7 @@ export function EmployeeListPage() {
         deptFilter !== 'All' &&
         String(emp?.department ?? '')
           .toLowerCase() !==
-          deptFilter.toLowerCase()
+        deptFilter.toLowerCase()
       ) {
         return false;
       }
@@ -168,7 +239,7 @@ export function EmployeeListPage() {
         statusFilter !== 'All' &&
         String(emp?.employmentStatus ?? '')
           .toLowerCase() !==
-          statusFilter.toLowerCase()
+        statusFilter.toLowerCase()
       ) {
         return false;
       }
@@ -272,21 +343,39 @@ export function EmployeeListPage() {
         title="Employees"
         description="Manage employee records and profiles"
         action={
-          checkPermission(
-            'employees.create'
-          ) ? (
-            <button
-              onClick={() =>
-                navigate(
-                  '/management/employees/create'
-                )
-              }
-              className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 flex items-center gap-2"
-            >
-              <Plus className="h-4 w-4" />
-              Add Employee
-            </button>
-          ) : undefined
+          <div className="flex items-center gap-2">
+
+            {checkPermission(
+              'employees.create'
+            ) && (
+                <button
+                  onClick={() =>
+                    navigate(
+                      '/management/employees/create'
+                    )
+                  }
+                  className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 flex items-center gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Employee
+                </button>
+              )}
+
+            {checkPermission(
+              'employees.create'
+            ) && (
+                <button
+                  onClick={() =>
+                    setShowDepartmentManager(true)
+                  }
+                  className="px-4 py-2 bg-white text-gray-700 border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <Building2 className="h-4 w-4" />
+                  Departments
+                </button>
+              )}
+
+          </div>
         }
       />
 
@@ -317,7 +406,12 @@ export function EmployeeListPage() {
             setDeptFilter(value);
             setCurrentPage(1);
           }}
-          options={DEPARTMENTS}
+          options={[
+            'All',
+            ...departments.map(
+              (department) => department.name
+            ),
+          ]}
           placeholder="All Departments"
         />
 
@@ -517,19 +611,19 @@ export function EmployeeListPage() {
                                 'employees.edit'
                               ) && (
 
-                                <button
-                                  onClick={() =>
-                                    navigate(
-                                      `/management/employees/${emp.id}/edit`
-                                    )
-                                  }
-                                  className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
-                                  title="Edit"
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </button>
+                                  <button
+                                    onClick={() =>
+                                      navigate(
+                                        `/management/employees/${emp.id}/edit`
+                                      )
+                                    }
+                                    className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                                    title="Edit"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </button>
 
-                              )}
+                                )}
 
                               {/* DELETE */}
 
@@ -537,21 +631,21 @@ export function EmployeeListPage() {
                                 'employees.delete'
                               ) && (
 
-                                <button
-                                  onClick={() =>
-                                    setDeleteId(
-                                      String(
-                                        emp.id
+                                  <button
+                                    onClick={() =>
+                                      setDeleteId(
+                                        String(
+                                          emp.id
+                                        )
                                       )
-                                    )
-                                  }
-                                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
-                                  title="Delete"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
+                                    }
+                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                                    title="Delete"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
 
-                              )}
+                                )}
 
                             </div>
 
@@ -602,6 +696,34 @@ export function EmployeeListPage() {
         confirmLabel="Delete"
         variant="danger"
         isLoading={deleting}
+      />
+
+
+
+      <DepartmentManagementModal
+        isOpen={showDepartmentManager}
+        onClose={() =>
+          setShowDepartmentManager(false)
+        }
+        onChanged={(updatedDepartments) => {
+          setDepartments(
+            updatedDepartments
+          );
+
+          // If the currently selected filter
+          // was deleted, reset it.
+          if (
+            deptFilter !== 'All' &&
+            !updatedDepartments.some(
+              (department) =>
+                department.name
+                  .toLowerCase() ===
+                deptFilter.toLowerCase()
+            )
+          ) {
+            setDeptFilter('All');
+          }
+        }}
       />
 
     </div>
@@ -899,12 +1021,12 @@ export function EmployeeDetailPage() {
             <div className="flex items-center gap-2">
               <span
                 className={`mt-1.5 h-3 w-3 rounded-full ${employee.employmentStatus === "Active"
-                    ? "bg-green-500"
-                    : employee.employmentStatus === "Inactive"
-                      ? "bg-gray-400"
-                      : employee.employmentStatus === "On Leave"
-                        ? "bg-yellow-500"
-                        : "bg-red-500"
+                  ? "bg-green-500"
+                  : employee.employmentStatus === "Inactive"
+                    ? "bg-gray-400"
+                    : employee.employmentStatus === "On Leave"
+                      ? "bg-yellow-500"
+                      : "bg-red-500"
                   }`}
               />
             </div>
@@ -1225,24 +1347,20 @@ export function EmployeeDetailPage() {
 }*/
 
 // --- Employee Form Page (Create/Edit) ---
+// --- Employee Form Page (Create/Edit) ---
 export function EmployeeFormPage() {
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [departmentsLoading, setDepartmentsLoading] = useState(true);
 
   const { id } = useParams();
-
   const navigate = useNavigate();
-
   const { addToast } = useToast();
 
   const isEdit = !!id;
 
-  const [loading, setLoading] =
-    useState(isEdit);
-
-  const [saving, setSaving] =
-    useState(false);
-
-  const [generatingNumber, setGeneratingNumber] =
-    useState(!isEdit);
+  const [loading, setLoading] = useState(isEdit);
+  const [saving, setSaving] = useState(false);
+  const [generatingNumber, setGeneratingNumber] = useState(!isEdit);
 
   const [form, setForm] = useState({
     employeeNumber: '',
@@ -1250,7 +1368,7 @@ export function EmployeeFormPage() {
     lastName: '',
     email: '',
     phone: '',
-    department: 'Engineering',
+    department: '',
     position: '',
     role: 'Employee',
     employmentStatus: 'Active',
@@ -1261,8 +1379,49 @@ export function EmployeeFormPage() {
     gender: 'Male',
   });
 
-  const [errors, setErrors] =
-    useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // ==========================================================
+  // LOAD DEPARTMENTS
+  // ==========================================================
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDepartments = async () => {
+      setDepartmentsLoading(true);
+
+      try {
+        const data = await departmentService.getAll();
+
+        if (!cancelled) {
+          setDepartments(Array.isArray(data) ? data : []);
+        }
+      } catch (error) {
+        console.error('Failed to load departments:', error);
+
+        if (!cancelled) {
+          setDepartments([]);
+
+          addToast(
+            'error',
+            'Failed to load departments',
+            'Unable to load company departments.'
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setDepartmentsLoading(false);
+        }
+      }
+    };
+
+    loadDepartments();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [addToast]);
 
   // ==========================================================
   // LOAD EMPLOYEE WHEN EDITING
@@ -1270,92 +1429,61 @@ export function EmployeeFormPage() {
   // ==========================================================
 
   useEffect(() => {
-
     let cancelled = false;
 
     const loadForm = async () => {
-
       // ------------------------------------------------------
       // EDIT
       // ------------------------------------------------------
 
       if (id) {
-
         setLoading(true);
 
         try {
-
-          const emp =
-              await employeeService.getById(id);
+          const emp = await employeeService.getById(id);
 
           if (!cancelled && emp) {
-
             setForm({
-              employeeNumber:
-                emp.employeeNumber || '',
+              employeeNumber: emp.employeeNumber || '',
+              firstName: emp.firstName || '',
+              lastName: emp.lastName || '',
+              email: emp.email || '',
+              phone: emp.phone || '',
 
-              firstName:
-                emp.firstName || '',
+              // IMPORTANT:
+              // Do NOT use hard-coded "Engineering".
+              department: emp.department || '',
 
-              lastName:
-                emp.lastName || '',
-
-              email:
-                emp.email || '',
-
-              phone:
-                emp.phone || '',
-
-              department:
-                emp.department || 'Engineering',
-
-              position:
-                emp.position || '',
-
-              role:
-                emp.role || 'Employee',
-
+              position: emp.position || '',
+              role: emp.role || 'Employee',
               employmentStatus:
                 emp.employmentStatus || 'Active',
-
-              hireDate:
-                emp.hireDate || '',
-
-              address:
-                emp.address || '',
-
+              hireDate: emp.hireDate || '',
+              address: emp.address || '',
               emergencyContact:
                 emp.emergencyContact || '',
-
               salary:
                 emp.salary !== null &&
                 emp.salary !== undefined
                   ? String(emp.salary)
                   : '',
-
-              gender:
-                emp.gender || 'Male',
+              gender: emp.gender || 'Male',
             });
           }
-
         } catch (error) {
-
           console.error(
             'Failed to load employee:',
             error
           );
 
           if (!cancelled) {
-
             addToast(
               'error',
               'Failed to load employee',
               'Unable to load employee information.'
             );
           }
-
         } finally {
-
           if (!cancelled) {
             setLoading(false);
           }
@@ -1372,40 +1500,33 @@ export function EmployeeFormPage() {
       setGeneratingNumber(true);
 
       try {
-
         const result =
-            await employeeService.getNextNumber();
+          await employeeService.getNextNumber();
 
         if (
           !cancelled &&
           result?.employeeNumber
         ) {
-
           setForm((current) => ({
             ...current,
             employeeNumber:
               result.employeeNumber,
           }));
         }
-
       } catch (error) {
-
         console.error(
           'Failed to generate employee number:',
           error
         );
 
         if (!cancelled) {
-
           addToast(
             'error',
             'Employee number unavailable',
             'Unable to generate the employee number.'
           );
         }
-
       } finally {
-
         if (!cancelled) {
           setGeneratingNumber(false);
         }
@@ -1417,7 +1538,6 @@ export function EmployeeFormPage() {
     return () => {
       cancelled = true;
     };
-
   }, [id, addToast]);
 
   // ==========================================================
@@ -1425,11 +1545,7 @@ export function EmployeeFormPage() {
   // ==========================================================
 
   const validate = () => {
-
     const errs: Record<string, string> = {};
-
-    // Employee number is NOT validated here.
-    // Backend generates it automatically.
 
     if (!form.firstName.trim()) {
       errs.firstName = 'Required';
@@ -1441,6 +1557,13 @@ export function EmployeeFormPage() {
 
     if (!form.email.trim()) {
       errs.email = 'Required';
+    }
+
+    // Department is now required because it comes from DB.
+    if (!form.department.trim()) {
+      errs.department = departmentsLoading
+        ? 'Loading departments...'
+        : 'Please select a department';
     }
 
     if (!form.position.trim()) {
@@ -1463,7 +1586,6 @@ export function EmployeeFormPage() {
   const handleSubmit = async (
     e: React.FormEvent
   ) => {
-
     e.preventDefault();
 
     if (!validate()) {
@@ -1473,53 +1595,26 @@ export function EmployeeFormPage() {
     setSaving(true);
 
     try {
-
-      // ------------------------------------------------------
-      // CREATE / UPDATE DATA
-      // ------------------------------------------------------
-
       const employeeData: any = {
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim(),
 
-        firstName:
-          form.firstName.trim(),
+        // Department selected from database.
+        department: form.department.trim(),
 
-        lastName:
-          form.lastName.trim(),
-
-        email:
-          form.email.trim(),
-
-        phone:
-          form.phone.trim(),
-
-        department:
-          form.department,
-
-        position:
-          form.position.trim(),
-
-        role:
-          form.role,
-
-        employmentStatus:
-          form.employmentStatus,
-
-        hireDate:
-          form.hireDate || null,
-
-        address:
-          form.address.trim(),
-
+        position: form.position.trim(),
+        role: form.role,
+        employmentStatus: form.employmentStatus,
+        hireDate: form.hireDate || null,
+        address: form.address.trim(),
         emergencyContact:
           form.emergencyContact.trim(),
-
-        salary:
-          form.salary
-            ? Number(form.salary)
-            : null,
-
-        gender:
-          form.gender,
+        salary: form.salary
+          ? Number(form.salary)
+          : null,
+        gender: form.gender,
       };
 
       // ------------------------------------------------------
@@ -1527,13 +1622,6 @@ export function EmployeeFormPage() {
       // ------------------------------------------------------
 
       if (isEdit) {
-
-        /*
-         * Keep the existing employee number during update.
-         *
-         * The backend also protects it.
-         */
-
         employeeData.employeeNumber =
           form.employeeNumber;
 
@@ -1547,7 +1635,6 @@ export function EmployeeFormPage() {
           'Employee updated',
           'Employee information has been updated successfully.'
         );
-
       }
 
       // ------------------------------------------------------
@@ -1555,20 +1642,10 @@ export function EmployeeFormPage() {
       // ------------------------------------------------------
 
       else {
-
-        /*
-         * IMPORTANT:
-         *
-         * Do NOT send employeeNumber.
-         *
-         * The backend generates the authoritative
-         * employee number.
-         */
-
         const createdEmployee =
-            await employeeService.create(
-              employeeData
-            );
+          await employeeService.create(
+            employeeData
+          );
 
         const generatedNumber =
           createdEmployee?.employeeNumber;
@@ -1582,12 +1659,8 @@ export function EmployeeFormPage() {
         );
       }
 
-      navigate(
-        '/management/employees'
-      );
-
+      navigate('/management/employees');
     } catch (error) {
-
       console.error(
         'Employee save error:',
         error
@@ -1602,9 +1675,7 @@ export function EmployeeFormPage() {
           ? 'Unable to update the employee.'
           : 'Unable to create the employee.'
       );
-
     } finally {
-
       setSaving(false);
     }
   };
@@ -1623,32 +1694,24 @@ export function EmployeeFormPage() {
 
   return (
     <div>
-
       {/* BACK */}
 
       <button
         onClick={() =>
-          navigate(
-            '/management/employees'
-          )
+          navigate('/management/employees')
         }
         className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 mb-4"
       >
-
         <ChevronLeft className="h-4 w-4" />
-
         Back to Employees
-
       </button>
 
       {/* TITLE */}
 
       <h1 className="text-2xl font-bold text-gray-900 mb-6">
-
         {isEdit
           ? 'Edit Employee'
           : 'Add New Employee'}
-
       </h1>
 
       {/* FORM */}
@@ -1657,15 +1720,10 @@ export function EmployeeFormPage() {
         onSubmit={handleSubmit}
         className="bg-white rounded-xl border border-gray-200 p-6 space-y-6"
       >
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-          {/* ==================================================
-              EMPLOYEE NUMBER
-              ================================================== */}
+          {/* EMPLOYEE NUMBER */}
 
           <div>
-
             <FormInput
               label="Employee Number"
               value={
@@ -1679,13 +1737,10 @@ export function EmployeeFormPage() {
             />
 
             <p className="mt-1.5 text-xs text-gray-500">
-
               {isEdit
                 ? 'Employee number is automatically assigned and cannot be changed.'
                 : 'StaffHub automatically generates the next employee number.'}
-
             </p>
-
           </div>
 
           {/* FIRST NAME */}
@@ -1697,8 +1752,7 @@ export function EmployeeFormPage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                firstName:
-                  e.target.value,
+                firstName: e.target.value,
               })
             }
             error={errors.firstName}
@@ -1713,8 +1767,7 @@ export function EmployeeFormPage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                lastName:
-                  e.target.value,
+                lastName: e.target.value,
               })
             }
             error={errors.lastName}
@@ -1730,8 +1783,7 @@ export function EmployeeFormPage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                email:
-                  e.target.value,
+                email: e.target.value,
               })
             }
             error={errors.email}
@@ -1745,30 +1797,57 @@ export function EmployeeFormPage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                phone:
-                  e.target.value,
+                phone: e.target.value,
               })
             }
           />
 
-          {/* DEPARTMENT */}
+          {/* ==================================================
+              DEPARTMENT
+              ================================================== */}
 
           <FormSelect
             label="Department"
+            required
             value={form.department}
-            onChange={(e) =>
+            onChange={(e) => {
               setForm({
                 ...form,
-                department:
-                  e.target.value,
-              })
-            }
-            options={DEPARTMENTS.map(
-              (d) => ({
-                value: d,
-                label: d,
-              })
-            )}
+                department: e.target.value,
+              });
+
+              // Clear department validation error.
+              if (e.target.value) {
+                setErrors((current) => {
+                  const next = {
+                    ...current,
+                  };
+
+                  delete next.department;
+
+                  return next;
+                });
+              }
+            }}
+            disabled={departmentsLoading}
+            error={errors.department}
+            options={[
+              {
+                value: '',
+                label: departmentsLoading
+                  ? 'Loading departments...'
+                  : departments.length === 0
+                    ? 'No departments available'
+                    : 'Select Department',
+              },
+
+              ...departments.map(
+                (department) => ({
+                  value: department.name,
+                  label: department.name,
+                })
+              ),
+            ]}
           />
 
           {/* POSITION */}
@@ -1780,8 +1859,7 @@ export function EmployeeFormPage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                position:
-                  e.target.value,
+                position: e.target.value,
               })
             }
             error={errors.position}
@@ -1795,8 +1873,7 @@ export function EmployeeFormPage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                role:
-                  e.target.value,
+                role: e.target.value,
               })
             }
             options={[
@@ -1806,21 +1883,17 @@ export function EmployeeFormPage() {
               'Training Coordinator',
               'Grievance Officer',
               'Event Organizer',
-            ].map(
-              (r) => ({
-                value: r,
-                label: r,
-              })
-            )}
+            ].map((r) => ({
+              value: r,
+              label: r,
+            }))}
           />
 
           {/* STATUS */}
 
           <FormSelect
             label="Status"
-            value={
-              form.employmentStatus
-            }
+            value={form.employmentStatus}
             onChange={(e) =>
               setForm({
                 ...form,
@@ -1828,14 +1901,12 @@ export function EmployeeFormPage() {
                   e.target.value,
               })
             }
-            options={
-              EMPLOYEE_STATUSES.map(
-                (s) => ({
-                  value: s,
-                  label: s,
-                })
-              )
-            }
+            options={EMPLOYEE_STATUSES.map(
+              (s) => ({
+                value: s,
+                label: s,
+              })
+            )}
           />
 
           {/* GENDER */}
@@ -1846,8 +1917,7 @@ export function EmployeeFormPage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                gender:
-                  e.target.value,
+                gender: e.target.value,
               })
             }
             options={[
@@ -1876,8 +1946,7 @@ export function EmployeeFormPage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                hireDate:
-                  e.target.value,
+                hireDate: e.target.value,
               })
             }
             error={errors.hireDate}
@@ -1892,12 +1961,10 @@ export function EmployeeFormPage() {
             onChange={(e) =>
               setForm({
                 ...form,
-                salary:
-                  e.target.value,
+                salary: e.target.value,
               })
             }
           />
-
         </div>
 
         {/* ADDRESS */}
@@ -1908,8 +1975,7 @@ export function EmployeeFormPage() {
           onChange={(e) =>
             setForm({
               ...form,
-              address:
-                e.target.value,
+              address: e.target.value,
             })
           }
           rows={2}
@@ -1919,14 +1985,11 @@ export function EmployeeFormPage() {
 
         <FormInput
           label="Emergency Contact"
-          value={
-            form.emergencyContact
-          }
+          value={form.emergencyContact}
           onChange={(e) =>
             setForm({
               ...form,
-              emergencyContact:
-                e.target.value,
+              emergencyContact: e.target.value,
             })
           }
         />
@@ -1934,13 +1997,10 @@ export function EmployeeFormPage() {
         {/* BUTTONS */}
 
         <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-
           <button
             type="button"
             onClick={() =>
-              navigate(
-                '/management/employees'
-              )
+              navigate('/management/employees')
             }
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
           >
@@ -1951,26 +2011,21 @@ export function EmployeeFormPage() {
             type="submit"
             disabled={
               saving ||
-              (!isEdit &&
-                generatingNumber)
+              generatingNumber ||
+              departmentsLoading ||
+              departments.length === 0
             }
             className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-2"
           >
-
             {saving && (
-              <Loader2
-                className="h-4 w-4 animate-spin"
-              />
+              <Loader2 className="h-4 w-4 animate-spin" />
             )}
 
             {isEdit
               ? 'Update Employee'
               : 'Create Employee'}
-
           </button>
-
         </div>
-
       </form>
     </div>
   );
