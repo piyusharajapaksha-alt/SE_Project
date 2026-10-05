@@ -98,7 +98,9 @@ function buildQuery(
 
   const query = params.toString();
 
-  return query ? `?${query}` : '';
+  return query
+    ? `?${query}`
+    : '';
 }
 
 // ------------------------------------------------------------
@@ -159,13 +161,15 @@ function normalizeGrievance(
 // ------------------------------------------------------------
 
 export const grievanceService = {
+
   // ----------------------------------------------------------
-  // Get grievances
+  // Get all grievances
   // ----------------------------------------------------------
 
   async getAll(
     filters: GrievanceFilters = {}
   ): Promise<Grievance[]> {
+
     const query =
       buildQuery(filters);
 
@@ -190,6 +194,7 @@ export const grievanceService = {
   async getById(
     id: number
   ): Promise<Grievance> {
+
     const data =
       await apiRequest<Grievance>(
         `/api/grievances/${id}`
@@ -210,6 +215,7 @@ export const grievanceService = {
       description: string;
     }
   ): Promise<number> {
+
     return apiRequest<number>(
       '/api/grievances',
       {
@@ -234,57 +240,52 @@ export const grievanceService = {
 
   // ----------------------------------------------------------
   // Update own grievance
-  //
-  // Backend verifies:
-  // - employee owns grievance
-  // - grievance is still New
   // ----------------------------------------------------------
 
   async update(
-  grievanceId: number,
-  grievance: UpdateGrievancePayload
-): Promise<string> {
-  const params = new URLSearchParams();
+    grievanceId: number,
+    grievance: UpdateGrievancePayload
+  ): Promise<string> {
 
-  params.set(
-    'employeeId',
-    grievance.employeeId
-  );
+    const params =
+      new URLSearchParams();
 
-  return apiRequest<string>(
-    `/api/grievances/${grievanceId}?${params.toString()}`,
-    {
-      method: 'PUT',
+    params.set(
+      'employeeId',
+      grievance.employeeId
+    );
 
-      body: {
-        employeeId:
-          grievance.employeeId,
+    return apiRequest<string>(
+      `/api/grievances/${grievanceId}?${params.toString()}`,
+      {
+        method: 'PUT',
 
-        category:
-          grievance.category,
+        body: {
+          employeeId:
+            grievance.employeeId,
 
-        priority:
-          grievance.priority,
+          category:
+            grievance.category,
 
-        description:
-          grievance.description,
-      },
-    }
-  );
-},
+          priority:
+            grievance.priority,
+
+          description:
+            grievance.description,
+        },
+      }
+    );
+  },
 
   // ----------------------------------------------------------
   // Delete own grievance
-  //
-  // Backend verifies:
-  // - employee owns grievance
-  // - grievance is still New
   // ----------------------------------------------------------
 
   async delete(
     grievanceId: number,
     employeeId: string
   ): Promise<string> {
+
     const params =
       new URLSearchParams();
 
@@ -310,6 +311,7 @@ export const grievanceService = {
     employeeId: string,
     text: string
   ): Promise<string> {
+
     return apiRequest<string>(
       `/api/grievances/${grievanceId}/responses`,
       {
@@ -325,19 +327,72 @@ export const grievanceService = {
 
   // ----------------------------------------------------------
   // Update status
+  //
+  // assignedTo is optional.
+  //
+  // When status = Assigned:
+  // assignedTo MUST contain employee number.
   // ----------------------------------------------------------
 
   async updateStatus(
     grievanceId: number,
-    status: string
+    status: string,
+    assignedTo?: string
   ): Promise<string> {
+
+    const body: {
+      status: string;
+      assignedTo?: string;
+    } = {
+      status,
+    };
+
+    if (
+      assignedTo &&
+      assignedTo.trim()
+    ) {
+      body.assignedTo =
+        assignedTo.trim();
+    }
+
+    return apiRequest<string>(
+      `/api/grievances/${grievanceId}/status`,
+      {
+        method: 'PUT',
+        body,
+      }
+    );
+  },
+
+  // ----------------------------------------------------------
+  // Assign grievance
+  //
+  // This is the method the Assign UI should use.
+  // ----------------------------------------------------------
+
+  async assign(
+    grievanceId: number,
+    assignedTo: string
+  ): Promise<string> {
+
+    if (
+      !assignedTo ||
+      !assignedTo.trim()
+    ) {
+      throw new Error(
+        'Please select an employee to assign the grievance'
+      );
+    }
+
     return apiRequest<string>(
       `/api/grievances/${grievanceId}/status`,
       {
         method: 'PUT',
 
         body: {
-          status,
+          status: 'Assigned',
+          assignedTo:
+            assignedTo.trim(),
         },
       }
     );

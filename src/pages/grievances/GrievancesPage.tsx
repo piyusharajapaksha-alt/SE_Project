@@ -14,6 +14,8 @@ import {
   type Grievance,
 } from '@/services/grievanceService';
 
+import { employeeService } from '@/services/dataServices';
+
 import {
   PageHeader,
   SearchInput,
@@ -25,6 +27,7 @@ import {
   Modal,
   FormSelect,
   FormTextarea,
+
 } from '@/components/ui';
 
 import {
@@ -42,7 +45,42 @@ import {
   Edit3,
   Trash2,
   AlertTriangle,
+  UserCheck,
 } from 'lucide-react';
+
+// ==========================================================
+// ASSIGNMENT
+// ==========================================================
+
+interface AssignmentEmployee {
+  id: number;
+  employeeNumber: string;
+  firstName: string;
+  lastName: string;
+  email?: string;
+  department?: string;
+  position?: string;
+  role?: string;
+  employmentStatus?: string;
+}
+
+const [showAssignModal, setShowAssignModal] =
+  useState(false);
+
+const [assignmentTarget, setAssignmentTarget] =
+  useState<Grievance | null>(null);
+
+const [assignmentEmployees, setAssignmentEmployees] =
+  useState<AssignmentEmployee[]>([]);
+
+const [selectedAssignee, setSelectedAssignee] =
+  useState('');
+
+const [assignmentLoading, setAssignmentLoading] =
+  useState(false);
+
+const [assignmentSaving, setAssignmentSaving] =
+  useState(false);
 
 // ============================================================
 // GRIEVANCES PAGE
@@ -304,7 +342,7 @@ export default function GrievancesPage() {
     if (
       !user?.employeeId ||
       grievance.employeeId !==
-        user.employeeId
+      user.employeeId
     ) {
       addToast(
         'error',
@@ -695,6 +733,169 @@ export default function GrievancesPage() {
   };
 
   // ==========================================================
+  // OPEN ASSIGNMENT MODAL
+  // ==========================================================
+
+  const openAssignModal = async (
+    grievance: Grievance
+  ) => {
+    if (!grievance.id) {
+      return;
+    }
+
+    setAssignmentTarget(grievance);
+
+    setSelectedAssignee(
+      grievance.assignedTo || ''
+    );
+
+    setShowAssignModal(true);
+
+    setAssignmentLoading(true);
+
+    try {
+      const employees =
+        await employeeService.getAll();
+
+      const eligibleEmployees =
+        (Array.isArray(employees)
+          ? employees
+          : []
+        ).filter(
+          (employee) => {
+
+            const role =
+              String(
+                employee.role || ''
+              ).trim();
+
+            const status =
+              String(
+                employee.employmentStatus || ''
+              ).trim();
+
+            const isEligibleRole =
+              role === 'HR Manager' ||
+              role === 'Grievance Officer';
+
+            const isActive =
+              !status ||
+              status.toLowerCase() ===
+              'active';
+
+            return (
+              isEligibleRole &&
+              isActive &&
+              Boolean(
+                employee.employeeNumber
+              )
+            );
+          }
+        );
+
+      setAssignmentEmployees(
+        eligibleEmployees
+      );
+    } catch (error) {
+      console.error(
+        'Failed to load grievance assignees:',
+        error
+      );
+
+      setAssignmentEmployees([]);
+
+      addToast(
+        'error',
+        error instanceof Error
+          ? error.message
+          : 'Failed to load eligible grievance officers'
+      );
+    } finally {
+      setAssignmentLoading(false);
+    }
+  };
+
+  // ==========================================================
+  // CLOSE ASSIGNMENT MODAL
+  // ==========================================================
+
+  const closeAssignModal = () => {
+    if (assignmentSaving) {
+      return;
+    }
+
+    setShowAssignModal(false);
+    setAssignmentTarget(null);
+    setSelectedAssignee('');
+    setAssignmentEmployees([]);
+  };
+
+  // ==========================================================
+  // SAVE ASSIGNMENT
+  // ==========================================================
+
+  const handleAssign = async () => {
+    if (!assignmentTarget?.id) {
+      return;
+    }
+
+    if (!selectedAssignee) {
+      addToast(
+        'error',
+        'Please select an employee to assign the grievance'
+      );
+
+      return;
+    }
+
+    setAssignmentSaving(true);
+
+    try {
+      await grievanceService.assign(
+        assignmentTarget.id,
+        selectedAssignee
+      );
+
+      addToast(
+        'success',
+        'Grievance assigned successfully'
+      );
+
+      closeAssignModal();
+
+      // Refresh list
+      await loadData();
+
+      // Refresh currently opened details
+      if (
+        showDetail?.id ===
+        assignmentTarget.id
+      ) {
+        const updated =
+          await grievanceService.getById(
+            assignmentTarget.id
+          );
+
+        setShowDetail(updated);
+      }
+    } catch (error) {
+      console.error(
+        'Failed to assign grievance:',
+        error
+      );
+
+      addToast(
+        'error',
+        error instanceof Error
+          ? error.message
+          : 'Failed to assign grievance'
+      );
+    } finally {
+      setAssignmentSaving(false);
+    }
+  };
+
+  // ==========================================================
   // MANAGEMENT STATUS UPDATE
   // ==========================================================
 
@@ -794,7 +995,7 @@ export default function GrievancesPage() {
       isEmployeeView &&
       Boolean(user?.employeeId) &&
       grievance.employeeId ===
-        user?.employeeId &&
+      user?.employeeId &&
       grievance.status === 'New'
     );
   };
@@ -819,7 +1020,7 @@ export default function GrievancesPage() {
   const totalPages =
     Math.ceil(
       grievances.length /
-        perPage
+      perPage
     );
 
   // ==========================================================
@@ -1044,12 +1245,12 @@ export default function GrievancesPage() {
                               getPriorityBadge(
                                 grievance.priority
                               ) as
-                                | 'success'
-                                | 'warning'
-                                | 'danger'
-                                | 'info'
-                                | 'neutral'
-                                | 'purple'
+                              | 'success'
+                              | 'warning'
+                              | 'danger'
+                              | 'info'
+                              | 'neutral'
+                              | 'purple'
                             }
                           >
                             {grievance.priority ||
@@ -1063,12 +1264,12 @@ export default function GrievancesPage() {
                               getStatusBadge(
                                 grievance.status
                               ) as
-                                | 'success'
-                                | 'warning'
-                                | 'danger'
-                                | 'info'
-                                | 'neutral'
-                                | 'purple'
+                              | 'success'
+                              | 'warning'
+                              | 'danger'
+                              | 'info'
+                              | 'neutral'
+                              | 'purple'
                             }
                             dot
                           >
@@ -1108,49 +1309,49 @@ export default function GrievancesPage() {
                             {canEmployeeModify(
                               grievance
                             ) && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  openEditForm(
-                                    grievance
-                                  )
-                                }
-                                className="
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    openEditForm(
+                                      grievance
+                                    )
+                                  }
+                                  className="
                                   p-1.5
                                   text-gray-400
                                   hover:text-indigo-600
                                   hover:bg-indigo-50
                                   rounded-lg
                                 "
-                                title="Edit grievance"
-                              >
-                                <Edit3 className="h-4 w-4" />
-                              </button>
-                            )}
+                                  title="Edit grievance"
+                                >
+                                  <Edit3 className="h-4 w-4" />
+                                </button>
+                              )}
 
                             {/* DELETE - EMPLOYEE ONLY */}
                             {canEmployeeModify(
                               grievance
                             ) && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  openDeleteConfirmation(
-                                    grievance
-                                  )
-                                }
-                                className="
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    openDeleteConfirmation(
+                                      grievance
+                                    )
+                                  }
+                                  className="
                                   p-1.5
                                   text-gray-400
                                   hover:text-red-600
                                   hover:bg-red-50
                                   rounded-lg
                                 "
-                                title="Delete grievance"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            )}
+                                  title="Delete grievance"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              )}
 
                             {/* RESPOND - MANAGEMENT */}
                             {canManage && (
@@ -1212,9 +1413,8 @@ export default function GrievancesPage() {
         onClose={() =>
           setShowDetail(null)
         }
-        title={`Grievance ${
-          showDetail?.id || ''
-        }`}
+        title={`Grievance ${showDetail?.id || ''
+          }`}
         size="lg"
       >
         {showDetail && (
@@ -1251,12 +1451,12 @@ export default function GrievancesPage() {
                     getPriorityBadge(
                       showDetail.priority
                     ) as
-                      | 'success'
-                      | 'warning'
-                      | 'danger'
-                      | 'info'
-                      | 'neutral'
-                      | 'purple'
+                    | 'success'
+                    | 'warning'
+                    | 'danger'
+                    | 'info'
+                    | 'neutral'
+                    | 'purple'
                   }
                 >
                   {showDetail.priority ||
@@ -1273,12 +1473,12 @@ export default function GrievancesPage() {
                     getStatusBadge(
                       showDetail.status
                     ) as
-                      | 'success'
-                      | 'warning'
-                      | 'danger'
-                      | 'info'
-                      | 'neutral'
-                      | 'purple'
+                    | 'success'
+                    | 'warning'
+                    | 'danger'
+                    | 'info'
+                    | 'neutral'
+                    | 'purple'
                   }
                   dot
                 >
@@ -1324,9 +1524,9 @@ export default function GrievancesPage() {
 
             {isEmployeeView &&
               showDetail.status ===
-                'New' &&
+              'New' &&
               showDetail.employeeId ===
-                user?.employeeId && (
+              user?.employeeId && (
                 <div className="rounded-lg border border-indigo-100 bg-indigo-50 p-3">
                   <p className="text-xs text-indigo-700">
                     This grievance is still new, so you can edit or delete it.
@@ -1341,7 +1541,7 @@ export default function GrievancesPage() {
               showDetail.responses
             ) &&
               showDetail.responses.length >
-                0 && (
+              0 && (
                 <div>
                   <h4 className="text-sm font-semibold text-gray-900 mb-2">
                     Responses (
@@ -1391,41 +1591,53 @@ export default function GrievancesPage() {
 
             {canManage &&
               showDetail.status !==
-                'Resolved' &&
+              'Resolved' &&
               showDetail.status !==
-                'Closed' && (
+              'Closed' && (
                 <div className="flex flex-wrap gap-2 pt-4 border-t border-gray-200">
                   {showDetail.status ===
                     'New' && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleStatusUpdate(
-                          showDetail.id!,
-                          'Under Review'
-                        )
-                      }
-                      className="px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 rounded-lg hover:bg-amber-100"
-                    >
-                      Mark Under Review
-                    </button>
-                  )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleStatusUpdate(
+                            showDetail.id!,
+                            'Under Review'
+                          )
+                        }
+                        className="px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 rounded-lg hover:bg-amber-100"
+                      >
+                        Mark Under Review
+                      </button>
+                    )}
 
                   {showDetail.status ===
                     'Under Review' && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleStatusUpdate(
-                          showDetail.id!,
-                          'Assigned'
-                        )
-                      }
-                      className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100"
-                    >
-                      Assign
-                    </button>
-                  )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openAssignModal(
+                            showDetail
+                          )
+                        }
+                        className="
+      inline-flex
+      items-center
+      gap-2
+      px-3
+      py-1.5
+      text-xs
+      font-medium
+      text-blue-700
+      bg-blue-50
+      rounded-lg
+      hover:bg-blue-100
+    "
+                      >
+                        <UserCheck className="h-4 w-4" />
+                        Assign
+                      </button>
+                    )}
 
                   <button
                     type="button"
@@ -1447,42 +1659,42 @@ export default function GrievancesPage() {
             {canEmployeeModify(
               showDetail
             ) && (
-              <div className="flex justify-end gap-2 border-t border-gray-200 pt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowDetail(
-                      null
-                    );
+                <div className="flex justify-end gap-2 border-t border-gray-200 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDetail(
+                        null
+                      );
 
-                    openEditForm(
-                      showDetail
-                    );
-                  }}
-                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100"
-                >
-                  <Edit3 className="h-4 w-4" />
-                  Edit
-                </button>
+                      openEditForm(
+                        showDetail
+                      );
+                    }}
+                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 rounded-lg hover:bg-indigo-100"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    Edit
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowDetail(
-                      null
-                    );
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDetail(
+                        null
+                      );
 
-                    openDeleteConfirmation(
-                      showDetail
-                    );
-                  }}
-                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Delete
-                </button>
-              </div>
-            )}
+                      openDeleteConfirmation(
+                        showDetail
+                      );
+                    }}
+                    className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-700 bg-red-50 rounded-lg hover:bg-red-100"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </button>
+                </div>
+              )}
           </div>
         )}
       </Modal>
@@ -1841,6 +2053,373 @@ export default function GrievancesPage() {
           </div>
         )}
       </Modal>
+
+      {/* ======================================================
+    ASSIGN GRIEVANCE MODAL
+====================================================== */}
+
+<Modal
+  isOpen={
+    showAssignModal
+  }
+  onClose={
+    closeAssignModal
+  }
+  title="Assign Grievance"
+  size="md"
+>
+  {assignmentTarget && (
+    <div className="space-y-5">
+
+      {/* INFORMATION */}
+
+      <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+
+        <div className="flex items-start gap-3">
+
+          <div className="
+            flex
+            h-10
+            w-10
+            shrink-0
+            items-center
+            justify-center
+            rounded-full
+            bg-blue-100
+            text-blue-600
+          ">
+            <UserCheck className="h-5 w-5" />
+          </div>
+
+          <div>
+
+            <h3 className="
+              text-sm
+              font-semibold
+              text-blue-900
+            ">
+              Assign grievance #
+              {assignmentTarget.id}
+            </h3>
+
+            <p className="
+              mt-1
+              text-sm
+              text-blue-700
+            ">
+              Select an HR Manager or Grievance Officer responsible for investigating this grievance.
+            </p>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      {/* GRIEVANCE SUMMARY */}
+
+      <div className="
+        rounded-lg
+        bg-gray-50
+        border
+        border-gray-200
+        p-4
+        space-y-2
+      ">
+
+        <div className="
+          flex
+          justify-between
+          gap-4
+          text-sm
+        ">
+
+          <span className="text-gray-500">
+            Employee
+          </span>
+
+          <span className="
+            font-medium
+            text-gray-900
+          ">
+            {assignmentTarget.employeeName ||
+              assignmentTarget.employeeId}
+          </span>
+
+        </div>
+
+        <div className="
+          flex
+          justify-between
+          gap-4
+          text-sm
+        ">
+
+          <span className="text-gray-500">
+            Category
+          </span>
+
+          <span className="
+            font-medium
+            text-gray-900
+          ">
+            {assignmentTarget.category}
+          </span>
+
+        </div>
+
+        <div className="
+          flex
+          justify-between
+          gap-4
+          text-sm
+        ">
+
+          <span className="text-gray-500">
+            Priority
+          </span>
+
+          <span className="
+            font-medium
+            text-gray-900
+          ">
+            {assignmentTarget.priority ||
+              'Medium'}
+          </span>
+
+        </div>
+
+      </div>
+
+      {/* ASSIGNEE */}
+
+      {assignmentLoading ? (
+
+        <div className="
+          flex
+          items-center
+          justify-center
+          gap-2
+          rounded-lg
+          border
+          border-gray-200
+          p-6
+          text-sm
+          text-gray-500
+        ">
+          <Loader2 className="
+            h-4
+            w-4
+            animate-spin
+          " />
+
+          Loading eligible employees...
+        </div>
+
+      ) : assignmentEmployees.length === 0 ? (
+
+        <div className="
+          rounded-lg
+          border
+          border-amber-200
+          bg-amber-50
+          p-4
+        ">
+
+          <p className="
+            text-sm
+            font-medium
+            text-amber-900
+          ">
+            No eligible employees found.
+          </p>
+
+          <p className="
+            mt-1
+            text-xs
+            text-amber-700
+          ">
+            An active HR Manager or Grievance Officer is required before this grievance can be assigned.
+          </p>
+
+        </div>
+
+      ) : (
+
+        <div>
+
+          <label
+            htmlFor="grievance-assignee"
+            className="
+              block
+              text-sm
+              font-medium
+              text-gray-700
+              mb-1.5
+            "
+          >
+            Assign To
+            <span className="text-red-500">
+              {' '}*
+            </span>
+          </label>
+
+          <select
+            id="grievance-assignee"
+            value={
+              selectedAssignee
+            }
+            onChange={(
+              event
+            ) =>
+              setSelectedAssignee(
+                event.target.value
+              )
+            }
+            disabled={
+              assignmentSaving
+            }
+            className="
+              w-full
+              rounded-lg
+              border
+              border-gray-300
+              bg-white
+              px-3
+              py-2.5
+              text-sm
+              text-gray-900
+              outline-none
+              focus:border-indigo-500
+              focus:ring-2
+              focus:ring-indigo-100
+              disabled:bg-gray-100
+            "
+          >
+
+            <option value="">
+              Select employee
+            </option>
+
+            {assignmentEmployees.map(
+              (employee) => (
+                <option
+                  key={
+                    employee.employeeNumber
+                  }
+                  value={
+                    employee.employeeNumber
+                  }
+                >
+                  {employee.firstName}{' '}
+                  {employee.lastName}
+                  {' — '}
+                  {employee.employeeNumber}
+                  {' — '}
+                  {employee.role}
+                  {employee.department
+                    ? ` — ${employee.department}`
+                    : ''}
+                </option>
+              )
+            )}
+
+          </select>
+
+          <p className="
+            mt-1.5
+            text-xs
+            text-gray-500
+          ">
+            Only active HR Managers and Grievance Officers are shown.
+          </p>
+
+        </div>
+
+      )}
+
+      {/* ACTIONS */}
+
+      <div className="
+        flex
+        justify-end
+        gap-3
+        border-t
+        border-gray-200
+        pt-4
+      ">
+
+        <button
+          type="button"
+          onClick={
+            closeAssignModal
+          }
+          disabled={
+            assignmentSaving
+          }
+          className="
+            px-4
+            py-2
+            text-sm
+            font-medium
+            text-gray-700
+            bg-white
+            border
+            border-gray-300
+            rounded-lg
+            hover:bg-gray-50
+            disabled:opacity-50
+          "
+        >
+          Cancel
+        </button>
+
+        <button
+          type="button"
+          onClick={
+            handleAssign
+          }
+          disabled={
+            assignmentSaving ||
+            assignmentLoading ||
+            !selectedAssignee ||
+            assignmentEmployees.length === 0
+          }
+          className="
+            inline-flex
+            items-center
+            gap-2
+            px-4
+            py-2
+            text-sm
+            font-medium
+            text-white
+            bg-indigo-600
+            rounded-lg
+            hover:bg-indigo-700
+            disabled:opacity-50
+          "
+        >
+
+          {assignmentSaving && (
+            <Loader2 className="
+              h-4
+              w-4
+              animate-spin
+            " />
+          )}
+
+          {assignmentSaving
+            ? 'Assigning...'
+            : 'Assign Grievance'}
+
+        </button>
+
+      </div>
+
+    </div>
+  )}
+</Modal>
     </div>
   );
 }
