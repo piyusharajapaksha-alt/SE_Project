@@ -8,6 +8,10 @@ import {
   TrainingProgram,
   TrainingStatus,
 } from '@/services/trainingService';
+import {
+  departmentService,
+  Department,
+} from '@/services/departmentService';
 
 import {
   PageHeader,
@@ -60,14 +64,6 @@ const STATUSES: TrainingStatus[] = [
   'Ongoing',
   'Completed',
   'Cancelled',
-];
-
-const DEPARTMENTS = [
-  'IT',
-  'HR',
-  'Finance',
-  'Marketing',
-  'Management',
 ];
 
 type FormState = {
@@ -218,13 +214,37 @@ export default function TrainingPage() {
   const [employeesLoading, setEmployeesLoading] =
     useState(false);
 
+  const [departments, setDepartments] =
+    useState<Department[]>([]);
+
+  const [departmentsLoading, setDepartmentsLoading] =
+    useState(false);
+
   useEffect(() => {
     loadPrograms();
   }, [search, categoryFilter, statusFilter]);
 
   useEffect(() => {
     loadEmployees();
+    loadDepartments();
   }, []);
+
+  const loadDepartments = async () => {
+    setDepartmentsLoading(true);
+
+    try {
+      const data = await departmentService.getAll();
+      setDepartments(data);
+    } catch (error: any) {
+      setDepartments([]);
+      addToast(
+        'error',
+        error?.message || 'Failed to load departments'
+      );
+    } finally {
+      setDepartmentsLoading(false);
+    }
+  };
 
   const loadPrograms = async () => {
     setLoading(true);
@@ -390,6 +410,25 @@ export default function TrainingPage() {
     if (form.trainingFor.length === 0) {
       nextErrors.trainingFor =
         'Select at least one department';
+    } else {
+      const validDepartmentNames = new Set(
+        departments.map(
+          (department) =>
+            department.name.trim().toLowerCase()
+        )
+      );
+
+      const invalidDepartment = form.trainingFor.find(
+        (department) =>
+          !validDepartmentNames.has(
+            department.trim().toLowerCase()
+          )
+      );
+
+      if (invalidDepartment) {
+        nextErrors.trainingFor =
+          `Department "${invalidDepartment}" is no longer available. Please reselect the department.`;
+      }
     }
 
     if (!form.status) {
@@ -920,7 +959,8 @@ export default function TrainingPage() {
           canManage ? (
             <button
               onClick={openCreate}
-              className="px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 flex items-center gap-2"
+              disabled={departmentsLoading || departments.length === 0}
+              className="px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <Plus className="h-4 w-4" />
               Create Training
@@ -1336,22 +1376,40 @@ export default function TrainingPage() {
             </p>
 
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-              {DEPARTMENTS.map(
-                (department) => {
-                  const selected =
-                    form.trainingFor.includes(
-                      department
-                    );
+              {departmentsLoading ? (
+                <div className="col-span-full rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center">
+                  <p className="text-sm text-gray-500">
+                    Loading departments...
+                  </p>
+                </div>
+              ) : departments.length === 0 ? (
+                <div className="col-span-full rounded-lg border border-dashed border-red-300 bg-red-50 px-4 py-6 text-center">
+                  <p className="text-sm font-medium text-red-700">
+                    No departments are available
+                  </p>
+                  <p className="text-xs text-red-600 mt-1">
+                    Create at least one active department before creating training.
+                  </p>
+                </div>
+              ) : (
+                departments.map(
+                  (department) => {
+                    const selected =
+                      form.trainingFor.some(
+                        (selectedDepartment) =>
+                          selectedDepartment.trim().toLowerCase() ===
+                          department.name.trim().toLowerCase()
+                      );
 
-                  return (
-                    <button
-                      type="button"
-                      key={department}
-                      onClick={() =>
-                        toggleDepartment(
-                          department
-                        )
-                      }
+                    return (
+                      <button
+                        type="button"
+                        key={department.id}
+                        onClick={() =>
+                          toggleDepartment(
+                            department.name
+                          )
+                        }
                       className={`px-3 py-2.5 rounded-lg border text-sm font-medium text-left transition-colors ${
                         selected
                           ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
@@ -1371,11 +1429,12 @@ export default function TrainingPage() {
                           )}
                         </span>
 
-                        {department}
+                        {department.name}
                       </div>
                     </button>
                   );
                 }
+              )
               )}
             </div>
 
