@@ -240,6 +240,23 @@ export const leaveService = {
       }
     ),
 
+    update: (
+  id: string | number,
+  data: {
+    type: string;
+    startDate: string;
+    endDate: string;
+    reason: string;
+  }
+) =>
+  apiRequest<any>(
+    `/api/leave/${id}`,
+    {
+      method: 'PUT',
+      body: data,
+    }
+  ),
+
   approve: (
     id: string | number,
     comment = '',
@@ -636,3 +653,5 @@ export const dashboardService = {
     };
   },
 };
+
+

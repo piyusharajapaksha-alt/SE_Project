@@ -28,6 +28,7 @@ import {
   User,
   BriefcaseBusiness,
   FileText,
+  Pencil,
 } from 'lucide-react';
 
 type LeaveRequest = {
@@ -101,6 +102,9 @@ export default function LeavePage() {
 
   const [showForm, setShowForm] =
     useState(false);
+
+  const [editingRequest, setEditingRequest] =
+    useState<LeaveRequest | null>(null);
 
   const [saving, setSaving] =
     useState(false);
@@ -452,43 +456,151 @@ export default function LeavePage() {
   ]);
 
   // ============================================================
-  // CREATE REQUEST
+  // START EDITING LEAVE REQUEST
+  // ============================================================
+  //
+  // Only Pending requests reach this function from the UI.
+  //
+  // Backend also verifies:
+  // - logged-in employee owns the request
+  // - request is still Pending
+  //
+  // So the frontend restriction is only the user interface;
+  // the backend remains the real security layer.
+  // ============================================================
+
+  const handleEditRequest = (
+    request: LeaveRequest
+  ) => {
+
+    if (
+      request.status !== 'Pending'
+    ) {
+
+      addToast(
+        'error',
+        'Only pending leave requests can be edited'
+      );
+
+      return;
+    }
+
+    setEditingRequest(
+      request
+    );
+
+    setForm({
+      type:
+        request.type || '',
+
+      startDate:
+        request.startDate || '',
+
+      endDate:
+        request.endDate || '',
+
+      reason:
+        request.reason || '',
+    });
+
+    setErrors({});
+
+    setShowForm(true);
+  };
+
+  // ============================================================
+  // CREATE / UPDATE REQUEST
   // ============================================================
 
   const handleSubmitRequest = async (
     event: React.FormEvent
   ) => {
+
     event.preventDefault();
 
     if (
       !validate() ||
       !user
     ) {
+
       return;
     }
 
     setSaving(true);
 
     try {
-      await leaveService.create({
-        employeeId:
-          user.employeeId,
-        type: form.type,
-        startDate:
-          form.startDate,
-        endDate:
-          form.endDate,
-        reason:
-          form.reason.trim(),
-        approverId: '',
-      });
 
-      addToast(
-        'success',
-        'Leave request submitted successfully'
-      );
+      // ========================================================
+      // EDIT EXISTING PENDING REQUEST
+      // ========================================================
+
+      if (editingRequest) {
+
+        await leaveService.update(
+          editingRequest.id,
+          {
+            type:
+              form.type,
+
+            startDate:
+              form.startDate,
+
+            endDate:
+              form.endDate,
+
+            reason:
+              form.reason.trim(),
+          }
+        );
+
+        addToast(
+          'success',
+          'Leave request updated successfully'
+        );
+
+      }
+
+      // ========================================================
+      // CREATE NEW REQUEST
+      // ========================================================
+
+      else {
+
+        await leaveService.create({
+          employeeId:
+            user.employeeId,
+
+          type:
+            form.type,
+
+          startDate:
+            form.startDate,
+
+          endDate:
+            form.endDate,
+
+          reason:
+            form.reason.trim(),
+
+          approverId:
+            '',
+        });
+
+        addToast(
+          'success',
+          'Leave request submitted successfully'
+        );
+      }
+
+      // ========================================================
+      // RESET FORM
+      // ========================================================
 
       setShowForm(false);
+
+      setEditingRequest(
+        null
+      );
 
       setForm({
         type: '',
@@ -500,9 +612,11 @@ export default function LeavePage() {
       setErrors({});
 
       await loadData();
+
     } catch (error) {
+
       console.error(
-        'Leave request failed:',
+        'Leave request operation failed:',
         error
       );
 
@@ -510,9 +624,13 @@ export default function LeavePage() {
         'error',
         error instanceof Error
           ? error.message
-          : 'Failed to submit leave request'
+          : editingRequest
+            ? 'Failed to update leave request'
+            : 'Failed to submit leave request'
       );
+
     } finally {
+
       setSaving(false);
     }
   };
@@ -980,7 +1098,7 @@ export default function LeavePage() {
                           <div className="flex items-center justify-end gap-1">
                             {canApprove &&
                               request.status ===
-                                'Pending' && (
+                              'Pending' && (
                                 <>
                                   <button
                                     onClick={() => {
@@ -1026,18 +1144,34 @@ export default function LeavePage() {
 
                             {isEmployeeView &&
                               request.status ===
-                                'Pending' && (
-                                <button
-                                  onClick={() =>
-                                    handleCancel(
-                                      request.id
-                                    )
-                                  }
-                                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
-                                  title="Cancel request"
-                                >
-                                  <XCircle className="h-4 w-4" />
-                                </button>
+                              'Pending' && (
+                                <>
+                                  {/* EDIT */}
+                                  <button
+                                    onClick={() =>
+                                      handleEditRequest(
+                                        request
+                                      )
+                                    }
+                                    className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                                    title="Edit leave request"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </button>
+
+                                  {/* CANCEL */}
+                                  <button
+                                    onClick={() =>
+                                      handleCancel(
+                                        request.id
+                                      )
+                                    }
+                                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                                    title="Cancel request"
+                                  >
+                                    <XCircle className="h-4 w-4" />
+                                  </button>
+                                </>
                               )}
                           </div>
                         </td>
@@ -1067,10 +1201,18 @@ export default function LeavePage() {
 
       <Modal
         isOpen={showForm}
-        onClose={() =>
-          setShowForm(false)
+        onClose={() => {
+          if (!saving) {
+            setShowForm(false);
+            setEditingRequest(null);
+            setErrors({});
+          }
+        }}
+        title={
+          editingRequest
+            ? 'Edit Leave Request'
+            : 'Request Leave'
         }
-        title="Request Leave"
         size="md"
       >
         <form
@@ -1168,9 +1310,11 @@ export default function LeavePage() {
           <div className="flex justify-end gap-3 pt-4">
             <button
               type="button"
-              onClick={() =>
-                setShowForm(false)
-              }
+              onClick={() => {
+                setShowForm(false);
+                setEditingRequest(null);
+                setErrors({});
+              }}
               className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
             >
               Cancel
@@ -1185,7 +1329,9 @@ export default function LeavePage() {
                 <Loader2 className="h-4 w-4 animate-spin" />
               )}
 
-              Submit Request
+              {editingRequest
+                ? 'Save Changes'
+                : 'Submit Request'}
             </button>
           </div>
         </form>
@@ -1205,7 +1351,7 @@ export default function LeavePage() {
         }}
         title={
           approveAction ===
-          'approve'
+            'approve'
             ? 'Approve Leave Request'
             : 'Reject Leave Request'
         }
@@ -1260,7 +1406,7 @@ export default function LeavePage() {
             <FormTextarea
               label={
                 approveAction ===
-                'reject'
+                  'reject'
                   ? 'Rejection Reason'
                   : 'Comments'
               }
@@ -1279,7 +1425,7 @@ export default function LeavePage() {
               rows={3}
               placeholder={
                 approveAction ===
-                'reject'
+                  'reject'
                   ? 'Please explain why this request is being rejected...'
                   : 'Optional comment...'
               }
@@ -1307,19 +1453,18 @@ export default function LeavePage() {
                 disabled={
                   approveLoading
                 }
-                className={`px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 flex items-center gap-2 ${
-                  approveAction ===
+                className={`px-4 py-2 text-sm font-medium text-white rounded-lg disabled:opacity-50 flex items-center gap-2 ${approveAction ===
                   'approve'
-                    ? 'bg-green-600 hover:bg-green-700'
-                    : 'bg-red-600 hover:bg-red-700'
-                }`}
+                  ? 'bg-green-600 hover:bg-green-700'
+                  : 'bg-red-600 hover:bg-red-700'
+                  }`}
               >
                 {approveLoading && (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 )}
 
                 {approveAction ===
-                'approve'
+                  'approve'
                   ? 'Approve'
                   : 'Reject'}
               </button>
