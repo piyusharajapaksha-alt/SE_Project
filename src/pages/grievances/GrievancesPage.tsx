@@ -1611,8 +1611,12 @@ export default function GrievancesPage() {
                       </button>
                     )}
 
-                  {showDetail.status ===
-                    'Under Review' && (
+                  {(
+                    showDetail.status ===
+                    'Under Review' ||
+                    showDetail.status ===
+                    'Assigned'
+                  ) && (
                       <button
                         type="button"
                         onClick={() =>
@@ -2058,26 +2062,26 @@ export default function GrievancesPage() {
     ASSIGN GRIEVANCE MODAL
 ====================================================== */}
 
-<Modal
-  isOpen={
-    showAssignModal
-  }
-  onClose={
-    closeAssignModal
-  }
-  title="Assign Grievance"
-  size="md"
->
-  {assignmentTarget && (
-    <div className="space-y-5">
+      <Modal
+        isOpen={
+          showAssignModal
+        }
+        onClose={
+          closeAssignModal
+        }
+        title="Assign Grievance"
+        size="md"
+      >
+        {assignmentTarget && (
+          <div className="space-y-5">
 
-      {/* INFORMATION */}
+            {/* INFORMATION */}
 
-      <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
 
-        <div className="flex items-start gap-3">
+              <div className="flex items-start gap-3">
 
-          <div className="
+                <div className="
             flex
             h-10
             w-10
@@ -2088,37 +2092,37 @@ export default function GrievancesPage() {
             bg-blue-100
             text-blue-600
           ">
-            <UserCheck className="h-5 w-5" />
-          </div>
+                  <UserCheck className="h-5 w-5" />
+                </div>
 
-          <div>
+                <div>
 
-            <h3 className="
+                  <h3 className="
               text-sm
               font-semibold
               text-blue-900
             ">
-              Assign grievance #
-              {assignmentTarget.id}
-            </h3>
+                    Assign grievance #
+                    {assignmentTarget.id}
+                  </h3>
 
-            <p className="
+                  <p className="
               mt-1
               text-sm
               text-blue-700
             ">
-              Select an HR Manager or Grievance Officer responsible for investigating this grievance.
-            </p>
+                    Select an HR Manager or Grievance Officer responsible for investigating this grievance.
+                  </p>
 
-          </div>
+                </div>
 
-        </div>
+              </div>
 
-      </div>
+            </div>
 
-      {/* GRIEVANCE SUMMARY */}
+            {/* GRIEVANCE SUMMARY */}
 
-      <div className="
+            <div className="
         rounded-lg
         bg-gray-50
         border
@@ -2127,75 +2131,75 @@ export default function GrievancesPage() {
         space-y-2
       ">
 
-        <div className="
+              <div className="
           flex
           justify-between
           gap-4
           text-sm
         ">
 
-          <span className="text-gray-500">
-            Employee
-          </span>
+                <span className="text-gray-500">
+                  Employee
+                </span>
 
-          <span className="
+                <span className="
             font-medium
             text-gray-900
           ">
-            {assignmentTarget.employeeName ||
-              assignmentTarget.employeeId}
-          </span>
+                  {assignmentTarget.employeeName ||
+                    assignmentTarget.employeeId}
+                </span>
 
-        </div>
+              </div>
 
-        <div className="
+              <div className="
           flex
           justify-between
           gap-4
           text-sm
         ">
 
-          <span className="text-gray-500">
-            Category
-          </span>
+                <span className="text-gray-500">
+                  Category
+                </span>
 
-          <span className="
+                <span className="
             font-medium
             text-gray-900
           ">
-            {assignmentTarget.category}
-          </span>
+                  {assignmentTarget.category}
+                </span>
 
-        </div>
+              </div>
 
-        <div className="
+              <div className="
           flex
           justify-between
           gap-4
           text-sm
         ">
 
-          <span className="text-gray-500">
-            Priority
-          </span>
+                <span className="text-gray-500">
+                  Priority
+                </span>
 
-          <span className="
+                <span className="
             font-medium
             text-gray-900
           ">
-            {assignmentTarget.priority ||
-              'Medium'}
-          </span>
+                  {assignmentTarget.priority ||
+                    'Medium'}
+                </span>
 
-        </div>
+              </div>
 
-      </div>
+            </div>
 
-      {/* ASSIGNEE */}
+            {/* ASSIGNEE */}
 
-      {assignmentLoading ? (
+            {assignmentLoading ? (
 
-        <div className="
+              <div className="
           flex
           items-center
           justify-center
@@ -2207,18 +2211,18 @@ export default function GrievancesPage() {
           text-sm
           text-gray-500
         ">
-          <Loader2 className="
+                <Loader2 className="
             h-4
             w-4
             animate-spin
           " />
 
-          Loading eligible employees...
-        </div>
+                Loading eligible employees...
+              </div>
 
-      ) : assignmentEmployees.length === 0 ? (
+            ) : assignmentEmployees.length === 0 ? (
 
-        <div className="
+              <div className="
           rounded-lg
           border
           border-amber-200
@@ -2226,60 +2230,60 @@ export default function GrievancesPage() {
           p-4
         ">
 
-          <p className="
+                <p className="
             text-sm
             font-medium
             text-amber-900
           ">
-            No eligible employees found.
-          </p>
+                  No eligible employees found.
+                </p>
 
-          <p className="
+                <p className="
             mt-1
             text-xs
             text-amber-700
           ">
-            An active HR Manager or Grievance Officer is required before this grievance can be assigned.
-          </p>
+                  An active HR Manager or Grievance Officer is required before this grievance can be assigned.
+                </p>
 
-        </div>
+              </div>
 
-      ) : (
+            ) : (
 
-        <div>
+              <div>
 
-          <label
-            htmlFor="grievance-assignee"
-            className="
+                <label
+                  htmlFor="grievance-assignee"
+                  className="
               block
               text-sm
               font-medium
               text-gray-700
               mb-1.5
             "
-          >
-            Assign To
-            <span className="text-red-500">
-              {' '}*
-            </span>
-          </label>
+                >
+                  Assign To
+                  <span className="text-red-500">
+                    {' '}*
+                  </span>
+                </label>
 
-          <select
-            id="grievance-assignee"
-            value={
-              selectedAssignee
-            }
-            onChange={(
-              event
-            ) =>
-              setSelectedAssignee(
-                event.target.value
-              )
-            }
-            disabled={
-              assignmentSaving
-            }
-            className="
+                <select
+                  id="grievance-assignee"
+                  value={
+                    selectedAssignee
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setSelectedAssignee(
+                      event.target.value
+                    )
+                  }
+                  disabled={
+                    assignmentSaving
+                  }
+                  className="
               w-full
               rounded-lg
               border
@@ -2295,52 +2299,52 @@ export default function GrievancesPage() {
               focus:ring-indigo-100
               disabled:bg-gray-100
             "
-          >
-
-            <option value="">
-              Select employee
-            </option>
-
-            {assignmentEmployees.map(
-              (employee) => (
-                <option
-                  key={
-                    employee.employeeNumber
-                  }
-                  value={
-                    employee.employeeNumber
-                  }
                 >
-                  {employee.firstName}{' '}
-                  {employee.lastName}
-                  {' — '}
-                  {employee.employeeNumber}
-                  {' — '}
-                  {employee.role}
-                  {employee.department
-                    ? ` — ${employee.department}`
-                    : ''}
-                </option>
-              )
-            )}
 
-          </select>
+                  <option value="">
+                    Select employee
+                  </option>
 
-          <p className="
+                  {assignmentEmployees.map(
+                    (employee) => (
+                      <option
+                        key={
+                          employee.employeeNumber
+                        }
+                        value={
+                          employee.employeeNumber
+                        }
+                      >
+                        {employee.firstName}{' '}
+                        {employee.lastName}
+                        {' — '}
+                        {employee.employeeNumber}
+                        {' — '}
+                        {employee.role}
+                        {employee.department
+                          ? ` — ${employee.department}`
+                          : ''}
+                      </option>
+                    )
+                  )}
+
+                </select>
+
+                <p className="
             mt-1.5
             text-xs
             text-gray-500
           ">
-            Only active HR Managers and Grievance Officers are shown.
-          </p>
+                  Only active HR Managers and Grievance Officers are shown.
+                </p>
 
-        </div>
+              </div>
 
-      )}
+            )}
 
-      {/* ACTIONS */}
+            {/* ACTIONS */}
 
-      <div className="
+            <div className="
         flex
         justify-end
         gap-3
@@ -2349,15 +2353,15 @@ export default function GrievancesPage() {
         pt-4
       ">
 
-        <button
-          type="button"
-          onClick={
-            closeAssignModal
-          }
-          disabled={
-            assignmentSaving
-          }
-          className="
+              <button
+                type="button"
+                onClick={
+                  closeAssignModal
+                }
+                disabled={
+                  assignmentSaving
+                }
+                className="
             px-4
             py-2
             text-sm
@@ -2370,22 +2374,22 @@ export default function GrievancesPage() {
             hover:bg-gray-50
             disabled:opacity-50
           "
-        >
-          Cancel
-        </button>
+              >
+                Cancel
+              </button>
 
-        <button
-          type="button"
-          onClick={
-            handleAssign
-          }
-          disabled={
-            assignmentSaving ||
-            assignmentLoading ||
-            !selectedAssignee ||
-            assignmentEmployees.length === 0
-          }
-          className="
+              <button
+                type="button"
+                onClick={
+                  handleAssign
+                }
+                disabled={
+                  assignmentSaving ||
+                  assignmentLoading ||
+                  !selectedAssignee ||
+                  assignmentEmployees.length === 0
+                }
+                className="
             inline-flex
             items-center
             gap-2
@@ -2399,27 +2403,27 @@ export default function GrievancesPage() {
             hover:bg-indigo-700
             disabled:opacity-50
           "
-        >
+              >
 
-          {assignmentSaving && (
-            <Loader2 className="
+                {assignmentSaving && (
+                  <Loader2 className="
               h-4
               w-4
               animate-spin
             " />
-          )}
+                )}
 
-          {assignmentSaving
-            ? 'Assigning...'
-            : 'Assign Grievance'}
+                {assignmentSaving
+                  ? 'Assigning...'
+                  : 'Assign Grievance'}
 
-        </button>
+              </button>
 
-      </div>
+            </div>
 
-    </div>
-  )}
-</Modal>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
