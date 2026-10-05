@@ -155,17 +155,13 @@ const mapTrainingProgram = (
       program.status ?? 'Upcoming',
 
     assignedEmployeeIds:
-      Array.isArray(
-        program.assignedEmployeeIds
-      )
-        ? program.assignedEmployeeIds
+      Array.isArray(program.assignedEmployeeIds)
+        ? program.assignedEmployeeIds.map(String)
         : [],
 
     registeredEmployeeIds:
-      Array.isArray(
-        program.registeredEmployeeIds
-      )
-        ? program.registeredEmployeeIds
+      Array.isArray(program.registeredEmployeeIds)
+        ? program.registeredEmployeeIds.map(String)
         : [],
 
     attendance:
@@ -176,6 +172,10 @@ const mapTrainingProgram = (
   };
 };
 
+
+/* =========================================================
+   ENRICH TRAINING PROGRAM
+   ========================================================= */
 
 const enrichProgram = (
   program: TrainingProgram
@@ -198,6 +198,12 @@ const enrichProgram = (
       program.capacity - registeredCount
     );
 
+  /*
+   * Keep the existing application behaviour.
+   *
+   * This represents the number of available places,
+   * not the number of assigned-but-unregistered employees.
+   */
   const notRegisteredCount =
     Math.max(
       0,
@@ -212,6 +218,109 @@ const enrichProgram = (
     notRegisteredCount,
     availableSeats,
   };
+};
+
+
+/* =========================================================
+   DEPARTMENT NORMALIZATION
+   ========================================================= */
+
+/**
+ * Normalizes department values before they are sent
+ * to the backend.
+ *
+ * Examples:
+ *
+ * "HR"       -> "HR"
+ * " hr"      -> "hr"
+ * "HR "      -> "HR"
+ * " Finance" -> "Finance"
+ *
+ * Duplicate departments are removed
+ * case-insensitively.
+ *
+ * The original spelling of the first occurrence is
+ * preserved because the backend also performs
+ * case-insensitive matching.
+ */
+const normalizeDepartments = (
+  departments?: string[]
+): string[] => {
+
+  if (!Array.isArray(departments)) {
+    return [];
+  }
+
+  const normalized: string[] = [];
+
+  for (const department of departments) {
+
+    if (
+      typeof department !== 'string' ||
+      !department
+    ) {
+      continue;
+    }
+
+    const value =
+      department.trim();
+
+    if (!value) {
+      continue;
+    }
+
+    const alreadyExists =
+      normalized.some(
+        (existing) =>
+          existing.trim().toLowerCase() ===
+          value.toLowerCase()
+      );
+
+    if (!alreadyExists) {
+      normalized.push(value);
+    }
+  }
+
+  return normalized;
+};
+
+
+/* =========================================================
+   NORMALIZE EMPLOYEE IDS
+   ========================================================= */
+
+const normalizeEmployeeIds = (
+  employeeIds?: string[]
+): string[] => {
+
+  if (!Array.isArray(employeeIds)) {
+    return [];
+  }
+
+  const normalized: string[] = [];
+
+  for (const employeeId of employeeIds) {
+
+    if (
+      typeof employeeId !== 'string' ||
+      !employeeId
+    ) {
+      continue;
+    }
+
+    const value =
+      employeeId.trim();
+
+    if (!value) {
+      continue;
+    }
+
+    if (!normalized.includes(value)) {
+      normalized.push(value);
+    }
+  }
+
+  return normalized;
 };
 
 
@@ -354,6 +463,11 @@ export const trainingService = {
     >
   ): Promise<TrainingProgram> {
 
+    const trainingFor =
+      normalizeDepartments(
+        payload.trainingFor
+      );
+
     const response =
       await apiRequest<TrainingApiResponse>(
         '/api/training',
@@ -361,22 +475,38 @@ export const trainingService = {
           method: 'POST',
 
           body: {
-            title: payload.title,
-            description: payload.description,
-            trainer: payload.trainer,
-            category: payload.category,
+            title:
+              payload.title?.trim() ?? '',
 
-            startDate: payload.startDate,
+            description:
+              payload.description?.trim() ?? '',
+
+            trainer:
+              payload.trainer?.trim() ?? '',
+
+            category:
+              payload.category?.trim() ?? '',
+
+            startDate:
+              payload.startDate,
+
             endDate:
-              payload.endDate || null,
+              payload.endDate?.trim() || null,
 
-            location: payload.location,
-            capacity: payload.capacity,
+            location:
+              payload.location?.trim() ?? '',
 
-            trainingFor:
-              payload.trainingFor,
+            capacity:
+              Number(payload.capacity),
 
-            status: payload.status,
+            /*
+             * IMPORTANT:
+             * Always send normalized department names.
+             */
+            trainingFor,
+
+            status:
+              payload.status,
           },
         }
       );
@@ -396,6 +526,11 @@ export const trainingService = {
     payload: Partial<TrainingProgram>
   ): Promise<TrainingProgram> {
 
+    const trainingFor =
+      normalizeDepartments(
+        payload.trainingFor
+      );
+
     const response =
       await apiRequest<TrainingApiResponse>(
         `/api/training/${id}`,
@@ -403,23 +538,46 @@ export const trainingService = {
           method: 'PUT',
 
           body: {
-            title: payload.title,
-            description: payload.description,
-            trainer: payload.trainer,
-            category: payload.category,
+            title:
+              payload.title?.trim() ?? '',
 
-            startDate: payload.startDate,
+            description:
+              payload.description?.trim() ?? '',
+
+            trainer:
+              payload.trainer?.trim() ?? '',
+
+            category:
+              payload.category?.trim() ?? '',
+
+            startDate:
+              payload.startDate,
 
             endDate:
-              payload.endDate || null,
+              payload.endDate?.trim() || null,
 
-            location: payload.location,
-            capacity: payload.capacity,
+            location:
+              payload.location?.trim() ?? '',
 
-            trainingFor:
-              payload.trainingFor || [],
+            capacity:
+              Number(payload.capacity),
 
-            status: payload.status,
+            /*
+             * IMPORTANT:
+             *
+             * The previous version had:
+             *
+             * payload.trainingFor || []
+             *
+             * That bypassed normalization during UPDATE.
+             *
+             * This version always normalizes the
+             * selected departments.
+             */
+            trainingFor,
+
+            status:
+              payload.status,
           },
         }
       );
@@ -470,11 +628,19 @@ export const trainingService = {
         return {
           /*
            * IMPORTANT:
-           * Use employeeNumber as the ID because
+           *
            * Training assignment and registration
-           * use EMP001 / EMP002 style IDs.
+           * use employee_number values such as:
+           *
+           * EMP001
+           * EMP002
+           * EMP003
+           *
+           * Therefore employeeNumber must be used
+           * as the frontend ID.
            */
-          id: employeeNumber,
+          id:
+            employeeNumber,
 
           employeeNumber,
 
@@ -522,7 +688,8 @@ export const trainingService = {
           );
 
         return {
-          id: employeeNumber,
+          id:
+            employeeNumber,
 
           employeeNumber,
 
@@ -565,12 +732,22 @@ export const trainingService = {
     employeeIds: string[]
   ): Promise<void> {
 
+    const normalizedEmployeeIds =
+      normalizeEmployeeIds(employeeIds);
+
+    if (
+      normalizedEmployeeIds.length === 0
+    ) {
+      return;
+    }
+
     await apiRequest<void>(
       `/api/training/${trainingId}/employees`,
       {
         method: 'POST',
 
-        body: employeeIds,
+        body:
+          normalizedEmployeeIds,
       }
     );
   },
@@ -585,9 +762,16 @@ export const trainingService = {
     employeeId: string
   ): Promise<void> {
 
+    const normalizedEmployeeId =
+      employeeId?.trim();
+
+    if (!normalizedEmployeeId) {
+      return;
+    }
+
     await apiRequest<void>(
       `/api/training/${trainingId}/employees/${encodeURIComponent(
-        employeeId
+        normalizedEmployeeId
       )}`,
       {
         method: 'DELETE',
@@ -605,13 +789,23 @@ export const trainingService = {
     employeeId: string
   ): Promise<void> {
 
+    const normalizedEmployeeId =
+      employeeId?.trim();
+
+    if (!normalizedEmployeeId) {
+      throw new Error(
+        'Employee ID is required'
+      );
+    }
+
     await apiRequest<void>(
       `/api/training/${trainingId}/register`,
       {
         method: 'POST',
 
         body: {
-          employeeId,
+          employeeId:
+            normalizedEmployeeId,
         },
       }
     );
@@ -627,9 +821,16 @@ export const trainingService = {
     employeeId: string
   ): Promise<void> {
 
+    const normalizedEmployeeId =
+      employeeId?.trim();
+
+    if (!normalizedEmployeeId) {
+      return;
+    }
+
     await apiRequest<void>(
       `/api/training/${trainingId}/register/${encodeURIComponent(
-        employeeId
+        normalizedEmployeeId
       )}`,
       {
         method: 'DELETE',
