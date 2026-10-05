@@ -13,13 +13,19 @@ export type TrainingStatus =
 export interface TrainingEmployee {
   id: string;
   employeeNumber: string;
+
   name: string;
   department: string;
   position: string;
   email: string;
 
-  assignmentStatus?: 'Assigned' | 'Not Assigned';
-  registrationStatus?: 'Registered' | 'Not Registered';
+  assignmentStatus?:
+    | 'Assigned'
+    | 'Not Assigned';
+
+  registrationStatus?:
+    | 'Registered'
+    | 'Not Registered';
 
   attendanceStatus?:
     | 'Present'
@@ -63,8 +69,12 @@ export interface TrainingProgram {
     string,
     'Completed' | 'Not Completed' | 'Pending'
   >;
-}
 
+  registeredCount?: number;
+  assignedCount?: number;
+  notRegisteredCount?: number;
+  availableSeats?: number;
+}
 
 /* =========================================================
    BACKEND TYPES
@@ -73,36 +83,35 @@ export interface TrainingProgram {
 interface TrainingApiResponse {
   id: number | string;
 
-  title: string;
-  description: string;
+  title?: string | null;
+  description?: string | null;
 
-  trainer: string;
-  category: string;
+  trainer?: string | null;
+  category?: string | null;
 
-  startDate: string;
+  startDate?: string | null;
   endDate?: string | null;
 
-  location: string;
-  capacity: number;
+  location?: string | null;
+  capacity?: number | null;
 
-  trainingFor: string[];
+  trainingFor?: string[] | null;
 
-  status: TrainingStatus;
+  status?: TrainingStatus | string | null;
 
-  assignedEmployeeIds?: string[];
-  registeredEmployeeIds?: string[];
+  assignedEmployeeIds?: string[] | null;
+  registeredEmployeeIds?: string[] | null;
 
   attendance?: Record<
     string,
     'Present' | 'Absent' | 'Pending'
-  >;
+  > | null;
 
   completion?: Record<
     string,
     'Completed' | 'Not Completed' | 'Pending'
-  >;
+  > | null;
 }
-
 
 /* =========================================================
    EMPLOYEE API TYPE
@@ -112,9 +121,13 @@ interface EmployeeApiResponse {
   id?: number | string;
 
   employeeNumber?: string;
+  employee_number?: string;
 
   firstName?: string;
+  first_name?: string;
+
   lastName?: string;
+  last_name?: string;
 
   email?: string;
 
@@ -122,127 +135,10 @@ interface EmployeeApiResponse {
   position?: string;
 }
 
-
 /* =========================================================
    HELPERS
    ========================================================= */
 
-const mapTrainingProgram = (
-  program: TrainingApiResponse
-): TrainingProgram => {
-
-  return {
-    id: String(program.id),
-
-    title: program.title ?? '',
-    description: program.description ?? '',
-
-    trainer: program.trainer ?? '',
-    category: program.category ?? '',
-
-    startDate: program.startDate ?? '',
-    endDate: program.endDate ?? '',
-
-    location: program.location ?? '',
-    capacity: Number(program.capacity ?? 0),
-
-    trainingFor:
-      Array.isArray(program.trainingFor)
-        ? program.trainingFor
-        : [],
-
-    status:
-      program.status ?? 'Upcoming',
-
-    assignedEmployeeIds:
-      Array.isArray(program.assignedEmployeeIds)
-        ? program.assignedEmployeeIds.map(String)
-        : [],
-
-    registeredEmployeeIds:
-      Array.isArray(program.registeredEmployeeIds)
-        ? program.registeredEmployeeIds.map(String)
-        : [],
-
-    attendance:
-      program.attendance ?? {},
-
-    completion:
-      program.completion ?? {},
-  };
-};
-
-
-/* =========================================================
-   ENRICH TRAINING PROGRAM
-   ========================================================= */
-
-const enrichProgram = (
-  program: TrainingProgram
-): TrainingProgram & {
-  registeredCount: number;
-  assignedCount: number;
-  notRegisteredCount: number;
-  availableSeats: number;
-} => {
-
-  const registeredCount =
-    program.registeredEmployeeIds.length;
-
-  const assignedCount =
-    program.assignedEmployeeIds.length;
-
-  const availableSeats =
-    Math.max(
-      0,
-      program.capacity - registeredCount
-    );
-
-  /*
-   * Keep the existing application behaviour.
-   *
-   * This represents the number of available places,
-   * not the number of assigned-but-unregistered employees.
-   */
-  const notRegisteredCount =
-    Math.max(
-      0,
-      program.capacity - registeredCount
-    );
-
-  return {
-    ...program,
-
-    registeredCount,
-    assignedCount,
-    notRegisteredCount,
-    availableSeats,
-  };
-};
-
-
-/* =========================================================
-   DEPARTMENT NORMALIZATION
-   ========================================================= */
-
-/**
- * Normalizes department values before they are sent
- * to the backend.
- *
- * Examples:
- *
- * "HR"       -> "HR"
- * " hr"      -> "hr"
- * "HR "      -> "HR"
- * " Finance" -> "Finance"
- *
- * Duplicate departments are removed
- * case-insensitively.
- *
- * The original spelling of the first occurrence is
- * preserved because the backend also performs
- * case-insensitive matching.
- */
 const normalizeDepartments = (
   departments?: string[]
 ): string[] => {
@@ -256,8 +152,7 @@ const normalizeDepartments = (
   for (const department of departments) {
 
     if (
-      typeof department !== 'string' ||
-      !department
+      typeof department !== 'string'
     ) {
       continue;
     }
@@ -269,21 +164,20 @@ const normalizeDepartments = (
       continue;
     }
 
-    const alreadyExists =
+    const duplicate =
       normalized.some(
-        (existing) =>
-          existing.trim().toLowerCase() ===
+        existing =>
+          existing.toLowerCase() ===
           value.toLowerCase()
       );
 
-    if (!alreadyExists) {
+    if (!duplicate) {
       normalized.push(value);
     }
   }
 
   return normalized;
 };
-
 
 /* =========================================================
    NORMALIZE EMPLOYEE IDS
@@ -302,8 +196,7 @@ const normalizeEmployeeIds = (
   for (const employeeId of employeeIds) {
 
     if (
-      typeof employeeId !== 'string' ||
-      !employeeId
+      typeof employeeId !== 'string'
     ) {
       continue;
     }
@@ -323,6 +216,258 @@ const normalizeEmployeeIds = (
   return normalized;
 };
 
+/* =========================================================
+   NORMALIZE STATUS
+   ========================================================= */
+
+const normalizeStatus = (
+  status?: string | null
+): TrainingStatus => {
+
+  switch (
+    status?.trim().toLowerCase()
+  ) {
+
+    case 'upcoming':
+      return 'Upcoming';
+
+    case 'ongoing':
+      return 'Ongoing';
+
+    case 'completed':
+      return 'Completed';
+
+    case 'cancelled':
+      return 'Cancelled';
+
+    default:
+      return 'Upcoming';
+  }
+};
+
+/* =========================================================
+   MAP TRAINING PROGRAM
+   ========================================================= */
+
+const mapTrainingProgram = (
+  program: TrainingApiResponse
+): TrainingProgram => {
+
+  const assignedEmployeeIds =
+    normalizeEmployeeIds(
+      program.assignedEmployeeIds ?? []
+    );
+
+  const registeredEmployeeIds =
+    normalizeEmployeeIds(
+      program.registeredEmployeeIds ?? []
+    );
+
+  const capacity =
+    Number(
+      program.capacity ?? 0
+    );
+
+  return {
+    id:
+      String(program.id),
+
+    title:
+      program.title ?? '',
+
+    description:
+      program.description ?? '',
+
+    trainer:
+      program.trainer ?? '',
+
+    category:
+      program.category ?? '',
+
+    startDate:
+      program.startDate ?? '',
+
+    endDate:
+      program.endDate ?? '',
+
+    location:
+      program.location ?? '',
+
+    capacity,
+
+    trainingFor:
+      normalizeDepartments(
+        program.trainingFor ?? []
+      ),
+
+    status:
+      normalizeStatus(
+        program.status
+      ),
+
+    assignedEmployeeIds,
+
+    registeredEmployeeIds,
+
+    attendance:
+      program.attendance ?? {},
+
+    completion:
+      program.completion ?? {},
+  };
+};
+
+/* =========================================================
+   ENRICH TRAINING
+   ========================================================= */
+
+const enrichProgram = (
+  program: TrainingProgram
+): TrainingProgram => {
+
+  const registeredCount =
+    program.registeredEmployeeIds.length;
+
+  const assignedCount =
+    program.assignedEmployeeIds.length;
+
+  const availableSeats =
+    Math.max(
+      0,
+      program.capacity -
+        registeredCount
+    );
+
+  const notRegisteredCount =
+    Math.max(
+      0,
+      program.capacity -
+        registeredCount
+    );
+
+  return {
+    ...program,
+
+    registeredCount,
+
+    assignedCount,
+
+    notRegisteredCount,
+
+    availableSeats,
+  };
+};
+
+/* =========================================================
+   MAP EMPLOYEE
+   ========================================================= */
+
+const mapEmployee = (
+  employee: EmployeeApiResponse
+): TrainingEmployee => {
+
+  const employeeNumber =
+    String(
+      employee.employeeNumber ??
+      employee.employee_number ??
+      employee.id ??
+      ''
+    ).trim();
+
+  const firstName =
+    employee.firstName ??
+    employee.first_name ??
+    '';
+
+  const lastName =
+    employee.lastName ??
+    employee.last_name ??
+    '';
+
+  return {
+    /*
+     * IMPORTANT:
+     *
+     * Training assignments use employee_number,
+     * not the database numeric employee ID.
+     */
+    id:
+      employeeNumber,
+
+    employeeNumber,
+
+    name:
+      `${firstName} ${lastName}`
+        .trim(),
+
+    department:
+      employee.department ?? '',
+
+    position:
+      employee.position ?? '',
+
+    email:
+      employee.email ?? '',
+  };
+};
+
+/* =========================================================
+   MAP TRAINING EMPLOYEE
+   ========================================================= */
+
+const mapTrainingEmployee = (
+  employee: any
+): TrainingEmployee => {
+
+  const employeeNumber =
+    String(
+      employee.employee_number ??
+      employee.employeeNumber ??
+      employee.id ??
+      ''
+    ).trim();
+
+  const firstName =
+    employee.first_name ??
+    employee.firstName ??
+    '';
+
+  const lastName =
+    employee.last_name ??
+    employee.lastName ??
+    '';
+
+  return {
+    id:
+      employeeNumber,
+
+    employeeNumber,
+
+    name:
+      employee.name ??
+      `${firstName} ${lastName}`
+        .trim(),
+
+    department:
+      employee.department ?? '',
+
+    position:
+      employee.position ?? '',
+
+    email:
+      employee.email ?? '',
+
+    assignmentStatus:
+      employee.assignment_status ??
+      employee.assignmentStatus ??
+      'Assigned',
+
+    registrationStatus:
+      employee.registration_status ??
+      employee.registrationStatus ??
+      'Not Registered',
+  };
+};
 
 /* =========================================================
    TRAINING SERVICE
@@ -330,9 +475,9 @@ const normalizeEmployeeIds = (
 
 export const trainingService = {
 
-  /* =======================================================
-     GET ALL
-     ======================================================= */
+  // ==========================================================
+  // GET ALL
+  // ==========================================================
 
   async getAll(
     filters?: {
@@ -342,48 +487,81 @@ export const trainingService = {
     }
   ): Promise<TrainingProgram[]> {
 
+    /*
+     * Backend currently returns all training programs.
+     *
+     * Filtering is intentionally performed here because
+     * the current controller exposes:
+     *
+     * GET /api/training
+     *
+     * and does not expose query-filter parameters.
+     */
     const response =
-      await apiRequest<TrainingApiResponse[]>(
+      await apiRequest<
+        TrainingApiResponse[]
+      >(
         '/api/training'
       );
 
     let programs =
-      response.map(mapTrainingProgram);
+      Array.isArray(response)
+        ? response.map(
+            mapTrainingProgram
+          )
+        : [];
 
+    // --------------------------------------------------------
+    // SEARCH
+    // --------------------------------------------------------
 
     const search =
       filters?.search
         ?.trim()
-        .toLowerCase() || '';
-
+        .toLowerCase() ?? '';
 
     if (search) {
 
       programs =
         programs.filter(
-          (program) =>
-            program.title
-              .toLowerCase()
-              .includes(search) ||
+          program => {
 
-            program.description
-              .toLowerCase()
-              .includes(search) ||
+            const departmentText =
+              program.trainingFor
+                .join(' ')
+                .toLowerCase();
 
-            program.trainer
-              .toLowerCase()
-              .includes(search) ||
+            return (
+              program.title
+                .toLowerCase()
+                .includes(search) ||
 
-            program.category
-              .toLowerCase()
-              .includes(search) ||
+              program.description
+                .toLowerCase()
+                .includes(search) ||
 
-            program.location
-              .toLowerCase()
-              .includes(search)
+              program.trainer
+                .toLowerCase()
+                .includes(search) ||
+
+              program.category
+                .toLowerCase()
+                .includes(search) ||
+
+              program.location
+                .toLowerCase()
+                .includes(search) ||
+
+              departmentText
+                .includes(search)
+            );
+          }
         );
     }
 
+    // --------------------------------------------------------
+    // CATEGORY
+    // --------------------------------------------------------
 
     if (
       filters?.category &&
@@ -392,12 +570,15 @@ export const trainingService = {
 
       programs =
         programs.filter(
-          (program) =>
+          program =>
             program.category ===
             filters.category
         );
     }
 
+    // --------------------------------------------------------
+    // STATUS
+    // --------------------------------------------------------
 
     if (
       filters?.status &&
@@ -406,20 +587,20 @@ export const trainingService = {
 
       programs =
         programs.filter(
-          (program) =>
+          program =>
             program.status ===
             filters.status
         );
     }
 
-
-    return programs.map(enrichProgram);
+    return programs.map(
+      enrichProgram
+    );
   },
 
-
-  /* =======================================================
-     GET BY ID
-     ======================================================= */
+  // ==========================================================
+  // GET BY ID
+  // ==========================================================
 
   async getById(
     id: string | number
@@ -428,12 +609,16 @@ export const trainingService = {
     try {
 
       const response =
-        await apiRequest<TrainingApiResponse>(
+        await apiRequest<
+          TrainingApiResponse
+        >(
           `/api/training/${id}`
         );
 
       return enrichProgram(
-        mapTrainingProgram(response)
+        mapTrainingProgram(
+          response
+        )
       );
 
     } catch (error) {
@@ -447,20 +632,23 @@ export const trainingService = {
     }
   },
 
-
-  /* =======================================================
-     CREATE
-     ======================================================= */
+  // ==========================================================
+  // CREATE
+  // ==========================================================
 
   async create(
-    payload: Omit<
-      TrainingProgram,
-      | 'id'
-      | 'assignedEmployeeIds'
-      | 'registeredEmployeeIds'
-      | 'attendance'
-      | 'completion'
-    >
+    payload: {
+      title: string;
+      description: string;
+      trainer: string;
+      category: string;
+      startDate: string;
+      endDate?: string;
+      location: string;
+      capacity: number;
+      trainingFor: string[];
+      status: TrainingStatus;
+    }
   ): Promise<TrainingProgram> {
 
     const trainingFor =
@@ -468,41 +656,56 @@ export const trainingService = {
         payload.trainingFor
       );
 
+    if (
+      trainingFor.length === 0
+    ) {
+
+      throw new Error(
+        'At least one department must be selected'
+      );
+    }
+
     const response =
-      await apiRequest<TrainingApiResponse>(
+      await apiRequest<
+        TrainingApiResponse
+      >(
         '/api/training',
         {
           method: 'POST',
 
           body: {
             title:
-              payload.title?.trim() ?? '',
+              payload.title
+                ?.trim() ?? '',
 
             description:
-              payload.description?.trim() ?? '',
+              payload.description
+                ?.trim() ?? '',
 
             trainer:
-              payload.trainer?.trim() ?? '',
+              payload.trainer
+                ?.trim() ?? '',
 
             category:
-              payload.category?.trim() ?? '',
+              payload.category
+                ?.trim() ?? '',
 
             startDate:
               payload.startDate,
 
             endDate:
-              payload.endDate?.trim() || null,
+              payload.endDate
+                ?.trim() || null,
 
             location:
-              payload.location?.trim() ?? '',
+              payload.location
+                ?.trim() ?? '',
 
             capacity:
-              Number(payload.capacity),
+              Number(
+                payload.capacity
+              ),
 
-            /*
-             * IMPORTANT:
-             * Always send normalized department names.
-             */
             trainingFor,
 
             status:
@@ -512,18 +715,30 @@ export const trainingService = {
       );
 
     return enrichProgram(
-      mapTrainingProgram(response)
+      mapTrainingProgram(
+        response
+      )
     );
   },
 
-
-  /* =======================================================
-     UPDATE
-     ======================================================= */
+  // ==========================================================
+  // UPDATE
+  // ==========================================================
 
   async update(
-    id: string,
-    payload: Partial<TrainingProgram>
+    id: string | number,
+    payload: {
+      title: string;
+      description: string;
+      trainer: string;
+      category: string;
+      startDate: string;
+      endDate?: string;
+      location: string;
+      capacity: number;
+      trainingFor: string[];
+      status: TrainingStatus;
+    }
   ): Promise<TrainingProgram> {
 
     const trainingFor =
@@ -531,48 +746,59 @@ export const trainingService = {
         payload.trainingFor
       );
 
+    if (
+      trainingFor.length === 0
+    ) {
+
+      throw new Error(
+        'At least one department must be selected'
+      );
+    }
+
     const response =
-      await apiRequest<TrainingApiResponse>(
+      await apiRequest<
+        TrainingApiResponse
+      >(
         `/api/training/${id}`,
         {
           method: 'PUT',
 
           body: {
             title:
-              payload.title?.trim() ?? '',
+              payload.title
+                ?.trim() ?? '',
 
             description:
-              payload.description?.trim() ?? '',
+              payload.description
+                ?.trim() ?? '',
 
             trainer:
-              payload.trainer?.trim() ?? '',
+              payload.trainer
+                ?.trim() ?? '',
 
             category:
-              payload.category?.trim() ?? '',
+              payload.category
+                ?.trim() ?? '',
 
             startDate:
               payload.startDate,
 
             endDate:
-              payload.endDate?.trim() || null,
+              payload.endDate
+                ?.trim() || null,
 
             location:
-              payload.location?.trim() ?? '',
+              payload.location
+                ?.trim() ?? '',
 
             capacity:
-              Number(payload.capacity),
+              Number(
+                payload.capacity
+              ),
 
             /*
-             * IMPORTANT:
-             *
-             * The previous version had:
-             *
-             * payload.trainingFor || []
-             *
-             * That bypassed normalization during UPDATE.
-             *
-             * This version always normalizes the
-             * selected departments.
+             * Always send the normalized
+             * department list during UPDATE.
              */
             trainingFor,
 
@@ -583,17 +809,18 @@ export const trainingService = {
       );
 
     return enrichProgram(
-      mapTrainingProgram(response)
+      mapTrainingProgram(
+        response
+      )
     );
   },
 
-
-  /* =======================================================
-     DELETE
-     ======================================================= */
+  // ==========================================================
+  // DELETE
+  // ==========================================================
 
   async delete(
-    id: string
+    id: string | number
   ): Promise<void> {
 
     await apiRequest<void>(
@@ -604,71 +831,41 @@ export const trainingService = {
     );
   },
 
-
-  /* =======================================================
-     GET ALL EMPLOYEES
-     ======================================================= */
+  // ==========================================================
+  // GET ALL EMPLOYEES
+  // ==========================================================
 
   async getAllEmployees(): Promise<
     TrainingEmployee[]
   > {
 
     const response =
-      await apiRequest<EmployeeApiResponse[]>(
+      await apiRequest<
+        EmployeeApiResponse[]
+      >(
         '/api/employees'
       );
 
-    return response.map(
-      (employee) => {
+    if (!Array.isArray(response)) {
+      return [];
+    }
 
-        const employeeNumber =
-          employee.employeeNumber ??
-          String(employee.id ?? '');
-
-        return {
-          /*
-           * IMPORTANT:
-           *
-           * Training assignment and registration
-           * use employee_number values such as:
-           *
-           * EMP001
-           * EMP002
-           * EMP003
-           *
-           * Therefore employeeNumber must be used
-           * as the frontend ID.
-           */
-          id:
-            employeeNumber,
-
-          employeeNumber,
-
-          name:
-            `${employee.firstName ?? ''} ${
-              employee.lastName ?? ''
-            }`.trim(),
-
-          department:
-            employee.department ?? '',
-
-          position:
-            employee.position ?? '',
-
-          email:
-            employee.email ?? '',
-        };
-      }
-    );
+    return response
+      .map(mapEmployee)
+      .filter(
+        employee =>
+          employee.employeeNumber
+            .trim()
+            .length > 0
+      );
   },
 
-
-  /* =======================================================
-     GET ASSIGNED EMPLOYEES
-     ======================================================= */
+  // ==========================================================
+  // GET ASSIGNED EMPLOYEES
+  // ==========================================================
 
   async getEmployees(
-    trainingId: string
+    trainingId: string | number
   ): Promise<TrainingEmployee[]> {
 
     const response =
@@ -676,69 +873,41 @@ export const trainingService = {
         `/api/training/${trainingId}/employees`
       );
 
-    return response.map(
-      (employee) => {
+    if (!Array.isArray(response)) {
+      return [];
+    }
 
-        const employeeNumber =
-          String(
-            employee.employee_number ??
-            employee.employeeNumber ??
-            employee.id ??
-            ''
-          );
-
-        return {
-          id:
-            employeeNumber,
-
-          employeeNumber,
-
-          name:
-            employee.name ??
-            `${employee.first_name ?? ''} ${
-              employee.last_name ?? ''
-            }`.trim(),
-
-          department:
-            employee.department ?? '',
-
-          position:
-            employee.position ?? '',
-
-          email:
-            employee.email ?? '',
-
-          assignmentStatus:
-            employee.assignment_status ??
-            employee.assignmentStatus ??
-            'Assigned',
-
-          registrationStatus:
-            employee.registration_status ??
-            employee.registrationStatus ??
-            'Not Registered',
-        };
-      }
-    );
+    return response
+      .map(mapTrainingEmployee)
+      .filter(
+        employee =>
+          employee.employeeNumber
+            .trim()
+            .length > 0
+      );
   },
 
-
-  /* =======================================================
-     ASSIGN EMPLOYEES
-     ======================================================= */
+  // ==========================================================
+  // ASSIGN EMPLOYEES
+  // ==========================================================
 
   async assignEmployees(
-    trainingId: string,
+    trainingId: string | number,
     employeeIds: string[]
   ): Promise<void> {
 
     const normalizedEmployeeIds =
-      normalizeEmployeeIds(employeeIds);
+      normalizeEmployeeIds(
+        employeeIds
+      );
 
     if (
       normalizedEmployeeIds.length === 0
     ) {
-      return;
+
+      throw new Error(
+        'At least one employee must be selected'
+      );
     }
 
     await apiRequest<void>(
@@ -746,19 +915,28 @@ export const trainingService = {
       {
         method: 'POST',
 
+        /*
+         * Backend controller expects:
+         *
+         * @RequestBody List<String> employeeIds
+         *
+         * Therefore this MUST be a JSON array,
+         * not:
+         *
+         * { employeeIds: [...] }
+         */
         body:
           normalizedEmployeeIds,
       }
     );
   },
 
-
-  /* =======================================================
-     REMOVE ASSIGNMENT
-     ======================================================= */
+  // ==========================================================
+  // REMOVE ASSIGNMENT
+  // ==========================================================
 
   async removeAssignment(
-    trainingId: string,
+    trainingId: string | number,
     employeeId: string
   ): Promise<void> {
 
@@ -766,7 +944,10 @@ export const trainingService = {
       employeeId?.trim();
 
     if (!normalizedEmployeeId) {
-      return;
+
+      throw new Error(
+        'Employee ID is required'
+      );
     }
 
     await apiRequest<void>(
@@ -779,13 +960,12 @@ export const trainingService = {
     );
   },
 
-
-  /* =======================================================
-     REGISTER
-     ======================================================= */
+  // ==========================================================
+  // REGISTER
+  // ==========================================================
 
   async register(
-    trainingId: string,
+    trainingId: string | number,
     employeeId: string
   ): Promise<void> {
 
@@ -793,6 +973,7 @@ export const trainingService = {
       employeeId?.trim();
 
     if (!normalizedEmployeeId) {
+
       throw new Error(
         'Employee ID is required'
       );
@@ -811,13 +992,12 @@ export const trainingService = {
     );
   },
 
-
-  /* =======================================================
-     UNREGISTER
-     ======================================================= */
+  // ==========================================================
+  // UNREGISTER
+  // ==========================================================
 
   async unregister(
-    trainingId: string,
+    trainingId: string | number,
     employeeId: string
   ): Promise<void> {
 
@@ -825,7 +1005,10 @@ export const trainingService = {
       employeeId?.trim();
 
     if (!normalizedEmployeeId) {
-      return;
+
+      throw new Error(
+        'Employee ID is required'
+      );
     }
 
     await apiRequest<void>(
@@ -838,3 +1021,4 @@ export const trainingService = {
     );
   },
 };
+
