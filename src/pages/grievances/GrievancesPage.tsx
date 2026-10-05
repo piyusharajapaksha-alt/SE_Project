@@ -64,6 +64,14 @@ interface AssignmentEmployee {
   employmentStatus?: string;
 }
 
+
+
+// ============================================================
+// GRIEVANCES PAGE
+// ============================================================
+
+export default function GrievancesPage() {
+  
 const [showAssignModal, setShowAssignModal] =
   useState(false);
 
@@ -82,11 +90,8 @@ const [assignmentLoading, setAssignmentLoading] =
 const [assignmentSaving, setAssignmentSaving] =
   useState(false);
 
-// ============================================================
-// GRIEVANCES PAGE
-// ============================================================
 
-export default function GrievancesPage() {
+
   const { user, checkPermission } =
     useAuth();
 
