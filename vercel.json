@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://winter-maintaining-joins-suse.trycloudflare.com/api/:path*"
+      "destination": "https://programming-screensavers-keno-usc.trycloudflare.com/api/:path*"
     },
     {
       "source": "/(.*)",
